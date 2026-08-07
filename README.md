@@ -28,10 +28,23 @@ hand-maintained table — to check (and eventually generate) Lua configs.
 
 ## Status
 
-Early. The schema extractor (the foundation everything else depends on) is
-built and verified against the real installed schema. See
-[`docs/PLAN.md`](docs/PLAN.md) for what's built, what's next, and how the
-pieces depend on each other.
+**The Validator is shippable.** `hyprvalidate check` works end to end: schema
+extraction, a `luac -p` syntax gate, a real Lua parser, and schema-driven
+checking of every `hl.*` symbol and `hl.config({...})` key/value. Run against
+all four existing community converters' real output on the same test config:
+3 of 4 fail the syntax gate outright, the 4th passes syntax but gets caught
+on an exact type bug (`animations.enabled` given a string instead of a
+boolean — a bug three of the four tools made independently).
+
+```
+$ hyprvalidate check somebody-elses-converted-config.lua
+somebody-elses-converted-config.lua:472: [type_mismatch] 'animations.enabled' expects boolean, got string ('yes, please :)')
+
+1 issue(s) found.
+```
+
+The Converter (`hyprvalidate convert`, turning an old `.conf` into Lua) isn't
+built yet — see [`docs/PLAN.md`](docs/PLAN.md) rows 5-7.
 
 ## Structure
 
@@ -39,13 +52,26 @@ pieces depend on each other.
 hyprvalidate/
   hyprvalidate/           the package
     schema/               extractor: hl.meta.lua -> queryable schema (done)
-    hyprlang/             hyprlang (.conf) reader - not started
-    luaast/               Lua AST + reader/writer - not started
+    luaast/                Lua reader + luac gate (done)
+    checker.py             schema-driven checker - the Validator's logic (done)
+    cli.py                 `hyprvalidate check ...` (done); `convert` not started
+    hyprlang/               hyprlang (.conf) reader - not started (Converter track)
   tests/
   docs/
     PLAN.md               the build plan - what, why, dependencies
   schema.json             example schema extracted from a real system
 ```
+
+## Usage
+
+```
+pip install -e .
+hyprvalidate check path/to/hyprland.lua [more-files.lua ...]
+```
+
+Exit codes: `0` clean, `1` schema findings, `2` invalid Lua or a missing/bad
+`--stub` path. Pass `--stub /path/to/hl.meta.lua` if your install keeps it
+somewhere other than the default.
 
 ## Requirements
 
