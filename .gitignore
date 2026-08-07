@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Third-party clones kept for study only (see reference-tools/README.md).
+# Each has its own .git - excluded so they don't get pulled in as embedded
+# repos / gitlinks. Local-only, not part of this project's shipped history.
+reference-tools/
