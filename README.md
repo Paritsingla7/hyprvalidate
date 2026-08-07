@@ -64,10 +64,28 @@ hyprvalidate/
 
 ## Usage
 
+Two ways to install, both verified against this repo:
+
+**pipx (recommended, no clone needed):**
 ```
-pip install -e .
+pipx install git+https://github.com/Paritsingla7/hyprvalidate.git
 hyprvalidate check path/to/hyprland.lua [more-files.lua ...]
 ```
+Isolates it in its own environment automatically. If `pipx` itself isn't
+installed: on Arch, `pip install pipx` is blocked by default (PEP 668 -
+system Python is externally managed) — use `sudo pacman -S python-pipx`
+instead, or install `pipx` inside a venv.
+
+**git clone + pip:**
+```
+git clone https://github.com/Paritsingla7/hyprvalidate.git
+cd hyprvalidate
+pip install .          # or: pip install -e .   (editable, for development)
+hyprvalidate check path/to/hyprland.lua [more-files.lua ...]
+```
+On Arch/externally-managed Python, do this inside a venv
+(`python3 -m venv .venv && .venv/bin/pip install .`) rather than passing
+`--break-system-packages`.
 
 Exit codes: `0` clean, `1` schema findings, `2` invalid Lua or a missing/bad
 `--stub` path. Pass `--stub /path/to/hl.meta.lua` if your install keeps it
