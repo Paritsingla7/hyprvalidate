@@ -51,7 +51,7 @@ feature(s) break or can't start without it.
 |---|---|---|---|---|
 | 1 | **Schema extractor** — reads `hl.meta.lua`'s LuaLS annotations (`---@class`, `---@field`, `---@alias`, `---\| "literal"`) into a queryable `Schema` object (classes/fields/types, aliases, config-key→type map) | nothing (reads the stub directly) | Validator, Converter — both are dead without this | **Done**, verified against the real installed stub (see `tests/test_extractor.py`) |
 | 2 | **`luac -p` gate** — shell out to `luac`, fail fast on invalid Lua before any schema-aware checking runs | nothing (just a subprocess call) | Validator (first/cheapest check), Converter (must run on its own output before calling a conversion done) | Not started — trivial, but exists as its own row because every one of the four existing tools skipped it and it alone would have caught 3 of 4 tools' fatal bugs |
-| 3 | **Lua reader** — parses an *existing* `.lua` file (hand-written, or another tool's output) into an AST we can walk | a Lua-parsing approach: either a 3rd-party Lua grammar library, or a narrower purpose-built reader that only needs to recognize `hl.*` call sites and table literals (not full general Lua semantics — no need to evaluate closures, loops, etc., only to find and inspect calls) | Validator only — this is *the* blocking dependency for the Validator feature specifically | Not started — **open decision**: reuse an existing Lua parser (e.g. a PyPI Lua-grammar package) vs. write a narrow scanner. Decide before starting; don't default silently, this shapes how much of real-world Lua syntax (e.g. our own `function() ... end` bind bodies) the Validator can actually handle |
+| 3 | **Lua reader** (`hyprvalidate/luaast/reader.py`) — parses an *existing* `.lua` file into an AST, plus two schema-agnostic utilities the checker needs: dotted-name resolution (`hl.dsp.window.close` from a Name/Index chain) and scalar-literal resolution. Deliberately doesn't know about the schema or decide what's valid — that's row 4. | `luaparser` (PyPI, MIT, ANTLR-generated Lua grammar) — chosen over a hand-rolled parser after verifying it correctly parses this project's own real config (lambda-bodied binds, a `Fornum` loop, 101 real Call/Method nodes, working line numbers via `first_token.line`) | Validator only | **Done** — `tests/test_lua_reader.py`, 7/7 passing, includes a regression anchor against the real `hyprland-lua/keybinds.lua` |
 | 4 | **Schema-driven checker** — walks the Lua reader's AST (3), cross-references every `hl.*` call and config key against the schema (1): unknown symbol, unknown key, wrong value type | 1, 3 | Validator — this is the Validator's actual logic, the other rows are plumbing around it | Not started |
 | 5 | **Hyprlang reader** — lexer + parser + AST for the *old* `.conf` format (adapting hyprconf2lua's `lexer.py`, MIT-licensed, per `reference-tools/README.md`) | nothing new (adapts existing prior art) | Converter only — Validator never touches hyprlang | Not started |
 | 6 | **Lua writer** — AST node types + emitter (AST → Lua text); shares node definitions with the reader (3) where the grammar overlaps | nothing new | Converter only | Not started |
@@ -64,12 +64,18 @@ shippable end to end without touching hyprlang at all. **5 → 6 → 7 → 8**
 Validator is real — it also becomes the Validator's own test oracle (convert
 something, then validate what came out).
 
+## What this project is
+
+**A standalone product**, shipped and marketed as its own thing — not a
+patch destined for someone else's repo. Any future PR into one of the four
+existing tools (e.g. wiring this schema into hyprlang2lua's emitter) is a
+separate, optional action taken later, on its own merits, if it ever makes
+sense — it is not this plan's goal or trajectory. Don't frame roadmap items
+as leading toward "and then we contribute it upstream."
+
 ## Non-goals (for now — revisit if this doc gets updated)
 
 - Not building a 5th end-to-end converter's *input* side from scratch — row
   5 explicitly reuses existing prior art rather than reinventing hyprlang
   parsing, which multiple existing tools already handle competently.
 - Not distro-packaging or CI yet — no users until rows 1–4 exist.
-- Not contributing upstream to any of the four existing tools yet — see
-  earlier discussion: prove this standalone first, PR later if it makes
-  sense once there's something working to point at.
