@@ -21,6 +21,17 @@ Scope, stated explicitly rather than left implicit:
   - A config value that's a variable reference, function call, or anything
     else that isn't a literal or a table constructor is accepted without
     comment - it can't be checked without evaluating the script.
+  - Call-shape (arity) checking only applies to symbols whose stub type is
+    a *named* signature (e.g. `hl.monitor` is `fun(spec: HL.MonitorSpec):
+    nil`) - argument count is checked against required/optional params.
+    Many stub functions are typed `fun(...): X` with no named params at
+    all (the dsp.* dispatcher builders, `env`, `curve`, `animation`, etc) -
+    those are never arity-checked, honestly, because there's nothing in
+    the stub to check them against. Argument *type* checking (is arg 1
+    actually a string) is not attempted - count only. Found via a real
+    example: `hl.monitor(nil, {...})` in a GPT-fabricated test config
+    resolves as a valid symbol (it is) but calls it with 2 args against a
+    1-required-param signature - exactly what this closes.
 """
 
 from __future__ import annotations
@@ -38,6 +49,7 @@ class FindingKind(str, Enum):
     UNKNOWN_SYMBOL = "unknown_symbol"
     UNKNOWN_CONFIG_KEY = "unknown_config_key"
     TYPE_MISMATCH = "type_mismatch"
+    ARITY_MISMATCH = "arity_mismatch"
 
 
 @dataclass
@@ -73,19 +85,101 @@ def _scalar_kind_matches(kind: str, type_expr: str) -> bool:
     return False
 
 
-def resolve_symbol(schema: Schema, dotted_name: str) -> tuple[bool, str]:
+@dataclass
+class Param:
+    name: str
+    type_expr: str
+    optional: bool
+
+
+@dataclass
+class FunctionSignature:
+    params: list[Param]
+    has_vararg: bool  # a bare "..." entry - unlimited/unchecked trailing args
+
+
+def _split_top_level(s: str, sep: str) -> list[str]:
+    """Split on `sep`, but only at bracket depth 0 - so a param type like
+    `table<string, string|number>` doesn't get split on its inner comma."""
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for ch in s:
+        if ch in "({<":
+            depth += 1
+        elif ch in ")}>":
+            depth -= 1
+        if ch == sep and depth == 0:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+    parts.append("".join(current))
+    return parts
+
+
+def parse_fun_signature(type_expr: str) -> FunctionSignature | None:
+    """Parse a LuaLS `fun(...)` type expression's parameter list. Returns
+    None if `type_expr` isn't a function type at all. Handles a param type
+    that's itself a nested `fun(...)` (e.g. `hl.on`'s `cb: fun(...)` arg) by
+    tracking bracket depth rather than splitting on the first close-paren."""
+    open_idx = type_expr.find("(")
+    if not type_expr.startswith("fun(") or open_idx == -1:
+        return None
+
+    depth = 0
+    end = None
+    for j in range(open_idx, len(type_expr)):
+        c = type_expr[j]
+        if c in "({<":
+            depth += 1
+        elif c in ")}>":
+            depth -= 1
+            if depth == 0:
+                end = j
+                break
+    if end is None:
+        return None
+
+    param_str = type_expr[open_idx + 1:end].strip()
+    if not param_str:
+        return FunctionSignature(params=[], has_vararg=False)
+
+    params: list[Param] = []
+    has_vararg = False
+    for tok in (t.strip() for t in _split_top_level(param_str, ",")):
+        if not tok:
+            continue
+        if tok == "...":
+            has_vararg = True
+            continue
+        if ":" in tok:
+            name_part, type_part = tok.split(":", 1)
+            name_part, type_part = name_part.strip(), type_part.strip()
+        else:
+            name_part, type_part = tok, "any"  # untyped bare param, not seen in practice
+        optional = name_part.endswith("?")
+        name = name_part[:-1] if optional else name_part
+        params.append(Param(name=name, type_expr=type_part, optional=optional))
+    return FunctionSignature(params=params, has_vararg=has_vararg)
+
+
+def resolve_symbol(schema: Schema, dotted_name: str) -> tuple[bool, str, str | None]:
     """Check a dotted `hl.*` symbol path against the schema. Returns
-    (is_valid, reason). Names not starting with "hl" are out of scope and
-    always considered valid (they're the user's own locals, not API)."""
+    (is_valid, reason, signature_type_expr). `signature_type_expr` is the
+    resolved function's raw `fun(...)` type string when this is a valid,
+    fully-resolved call target - None otherwise (not a call target, or
+    invalid). Names not starting with "hl" are out of scope and always
+    considered valid (they're the user's own locals, not API)."""
     segments = dotted_name.split(".")
     if segments[0] != "hl":
-        return True, "not an hl.* symbol, not checked"
+        return True, "not an hl.* symbol, not checked", None
 
     current_class = "HL.API"
     for i, seg in enumerate(segments[1:], start=1):
         cls = schema.classes.get(current_class)
         if cls is None:
-            return False, f"internal: unknown schema class {current_class!r}"
+            return False, f"internal: unknown schema class {current_class!r}", None
 
         type_expr = cls.fields.get(seg)
         if type_expr is None:
@@ -93,11 +187,11 @@ def resolve_symbol(schema: Schema, dotted_name: str) -> tuple[bool, str]:
                 # Dynamic index signature (`[string] any`) - plugins
                 # register their own members at runtime. See module
                 # docstring.
-                return True, "hl.plugin.* member, accepted (dynamic)"
+                return True, "hl.plugin.* member, accepted (dynamic)", None
             return False, (
                 f"'{seg}' is not a member of {current_class} "
                 f"(resolving {dotted_name})"
-            )
+            ), None
 
         if type_expr.startswith("fun("):
             remaining = segments[i + 1:]
@@ -105,8 +199,8 @@ def resolve_symbol(schema: Schema, dotted_name: str) -> tuple[bool, str]:
                 return False, (
                     f"'{'.'.join(segments[:i+1])}' is a function, "
                     f"but '{'.'.join(remaining)}' is accessed on it"
-                )
-            return True, "resolved to a documented dispatcher/API function"
+                ), None
+            return True, "resolved to a documented dispatcher/API function", type_expr
 
         if type_expr in schema.classes:
             current_class = type_expr
@@ -120,10 +214,10 @@ def resolve_symbol(schema: Schema, dotted_name: str) -> tuple[bool, str]:
             return False, (
                 f"'{'.'.join(segments[:i+1])}' is type {type_expr!r}, "
                 f"not a namespace - can't access '{'.'.join(remaining)}' on it"
-            )
-        return True, f"resolved to a field of type {type_expr!r}"
+            ), None
+        return True, f"resolved to a field of type {type_expr!r}", None
 
-    return True, "resolved to a namespace (not called further)"
+    return True, "resolved to a namespace (not called further)", None
 
 
 def _walk_config_table(
@@ -224,10 +318,27 @@ def check(schema: Schema, tree) -> list[Finding]:
             continue
         line = node.first_token.line if node.first_token else None
 
-        is_valid, reason = resolve_symbol(schema, dotted)
+        is_valid, reason, sig_type_expr = resolve_symbol(schema, dotted)
         if not is_valid:
             findings.append(Finding(FindingKind.UNKNOWN_SYMBOL, line, f"{dotted}: {reason}"))
             continue
+
+        if sig_type_expr is not None:
+            sig = parse_fun_signature(sig_type_expr)
+            if sig is not None and not sig.has_vararg:
+                n_args = len(node.args)
+                min_args = sum(1 for p in sig.params if not p.optional)
+                max_args = len(sig.params)
+                if n_args < min_args:
+                    findings.append(Finding(
+                        FindingKind.ARITY_MISMATCH, line,
+                        f"{dotted}: expects at least {min_args} argument(s), got {n_args}",
+                    ))
+                elif n_args > max_args:
+                    findings.append(Finding(
+                        FindingKind.ARITY_MISMATCH, line,
+                        f"{dotted}: expects at most {max_args} argument(s), got {n_args}",
+                    ))
 
         if dotted == "hl.config" and node.args and isinstance(node.args[0], Table):
             findings.extend(_walk_config_table(schema, node.args[0], "", line))
