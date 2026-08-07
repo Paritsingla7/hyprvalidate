@@ -1,0 +1,13 @@
+[project]
+name = "hyprvalidate"
+version = "0.0.1"
+description = "Schema-driven validator for Hyprland's Lua config format"
+requires-python = ">=3.10"
+dependencies = [
+    "luaparser>=4.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
