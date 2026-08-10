@@ -1,7 +1,8 @@
-"""Tests for the CLI (docs/PLAN.md row 8) - only the `check` subcommand
-exists (see cli.py docstring for why `convert` isn't stubbed yet).
+"""Tests for the CLI (docs/PLAN.md row 8): `check` validates an existing
+.lua config; `convert` (docs/CONVERTER_PLAN.md task 7.5) turns an old
+hyprlang .conf into Lua.
 
-Tests both the pure orchestration function directly (fast, no subprocess)
+Tests both the pure orchestration functions directly (fast, no subprocess)
 and the actual installed console-script entry point end to end (proves the
 thing a user would actually type works, not just the internals).
 """
@@ -12,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from hyprvalidate.cli import check_files, DEFAULT_STUB_PATH
+from hyprvalidate.cli import check_files, convert_file, DEFAULT_STUB_PATH
 
 REPO_ROOT = Path(__file__).parent.parent
 REAL_KEYBINDS = REPO_ROOT.parent / "configs" / "hyprland-lua" / "keybinds.lua"
@@ -67,6 +68,62 @@ def test_real_migrated_config_directory_is_clean():
     assert files
     code, lines = check_files(files, DEFAULT_STUB_PATH)
     assert code == 0, f"expected the project's own real config to be clean: {lines}"
+
+
+def test_convert_writes_output_file_and_exits_zero_when_clean(tmp_path):
+    src = tmp_path / "in.conf"
+    src.write_text("bind = SUPER, Q, killactive,\n")
+    out = tmp_path / "out.lua"
+    code, lines = convert_file(src, DEFAULT_STUB_PATH, out)
+    assert code == 0
+    assert out.is_file()
+    assert "hl.dsp.window.close" in out.read_text()
+
+
+def test_convert_without_output_prints_to_returned_lines(tmp_path):
+    src = tmp_path / "in.conf"
+    src.write_text("bind = SUPER, Q, killactive,\n")
+    code, lines = convert_file(src, DEFAULT_STUB_PATH, None)
+    assert code == 0
+    assert any("hl.dsp.window.close" in line for line in lines)
+
+
+def test_convert_reports_findings_on_converted_output(tmp_path):
+    src = tmp_path / "in.conf"
+    src.write_text("animations {\n    enabled = yes, please :)\n}\n")
+    code, lines = convert_file(src, DEFAULT_STUB_PATH, None)
+    assert code == 1
+    assert any("type_mismatch" in line for line in lines)
+
+
+def test_convert_missing_stub_exits_two(tmp_path):
+    src = tmp_path / "in.conf"
+    src.write_text("bind = SUPER, Q, killactive,\n")
+    code, lines = convert_file(src, "/nonexistent/hl.meta.lua", None)
+    assert code == 2
+    assert "not found" in lines[0]
+
+
+def test_convert_real_config_end_to_end(tmp_path):
+    out = tmp_path / "hyprland.lua"
+    code, lines = convert_file(REPO_ROOT.parent / "configs" / "hyprland.conf", DEFAULT_STUB_PATH, out)
+    assert code == 1  # the real config's own joke value, see test_converter_mapper.py
+    assert out.is_file()
+
+
+def test_installed_entry_point_convert_works_end_to_end(tmp_path):
+    entry_point = Path(sys.executable).parent / "hyprvalidate"
+    assert entry_point.is_file(), f"expected an installed console script at {entry_point}"
+
+    src = tmp_path / "in.conf"
+    src.write_text("bind = SUPER, Q, killactive,\n")
+    out = tmp_path / "out.lua"
+    result = subprocess.run(
+        [str(entry_point), "convert", str(src), "-o", str(out)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0
+    assert "hl.dsp.window.close" in out.read_text()
 
 
 def test_installed_entry_point_works_end_to_end(tmp_path):
