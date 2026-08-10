@@ -137,6 +137,30 @@ def test_exec_once_directive():
     assert d.args == ["mako"]
 
 
+def test_plain_key_value_does_not_comma_split():
+    """The exact bug found via the real config's own joke value: a plain
+    key = value line keeps its whole remainder as one value, commas
+    included - only specific multi-arg directives (bind/monitor/animation/
+    bezier/gesture/layerrule/workspace/permission/env) comma-split."""
+    hf = parse("animations {\n    enabled = yes, please :)\n}\n")
+    block = hf.statements[0]
+    d = block.directives[0]
+    assert d.args == ["yes, please :)"]
+
+
+def test_real_config_animations_enabled_is_not_comma_split():
+    hf = parse_file(REAL_CONF)
+    animations = next(s for s in hf.statements if isinstance(s, Block) and s.name == "animations")
+    enabled = next(d for d in animations.directives if d.key == "enabled")
+    assert enabled.args == ["yes, please :)"]
+
+
+def test_bind_style_directive_still_comma_splits():
+    hf = parse("$mainMod = SUPER\nbind = $mainMod, T, exec, kitty\n")
+    d = hf.statements[1]
+    assert d.args == ["SUPER", "T", "exec", "kitty"]
+
+
 def test_source_directive():
     hf = parse("source = /home/x/noctalia-colors.conf\n")
     d = hf.statements[0]

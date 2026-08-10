@@ -15,6 +15,18 @@ from .lexer import Token, tokenize
 
 WINDOW_RULE_NAMES = ("windowrule", "windowrulev2")
 
+# Directive keys whose value is a comma-separated list of positional args in
+# real hyprlang - everything else keeps its whole remainder as one value
+# (commas included), since a plain `key = value` line is never split.
+COMMA_LIST_KEYS = frozenset({
+    "monitor", "animation", "bezier", "gesture", "layerrule", "workspace",
+    "permission", "env",
+})
+
+
+def _is_comma_list_key(key: str) -> bool:
+    return key in COMMA_LIST_KEYS or key.startswith("bind")
+
 
 @dataclass
 class Directive:
@@ -93,8 +105,15 @@ class _Parser:
             value_tokens.append(self._advance())
         return value_tokens
 
-    def _tokens_to_args(self, value_tokens: List[Token]) -> List[str]:
-        """Join a value's tokens into comma-split, $-substituted arg strings.
+    def _tokens_to_args(self, value_tokens: List[Token], split_commas: bool = True) -> List[str]:
+        """Join a value's tokens into $-substituted arg strings, comma-split
+        only when `split_commas` is true. hyprlang only comma-splits for
+        specific multi-arg directives (bind/monitor/animation/bezier/
+        gesture/layerrule/workspace/permission/env, see COMMA_LIST_KEYS) -
+        a plain `key = value` keeps its whole remainder as one value, commas
+        included. Found via the real config's own joke value
+        (`animations { enabled = yes, please :) }`), which a blanket comma
+        split would wrongly cut into two args.
 
         Adjacency (no whitespace) is preserved without a space; a gap in the
         source (whitespace the lexer's SKIP rule discarded) becomes exactly
@@ -105,7 +124,7 @@ class _Parser:
         """
         segments: List[List[Token]] = [[]]
         for tok in value_tokens:
-            if tok.type == "COMMA":
+            if split_commas and tok.type == "COMMA":
                 segments.append([])
             else:
                 segments[-1].append(tok)
@@ -179,7 +198,8 @@ class _Parser:
         if nxt.type == "EQUALS":
             self._advance()
             value_tokens = self._read_value_tokens_until_newline()
-            args = self._tokens_to_args(value_tokens)
+            split_commas = key in WINDOW_RULE_NAMES or _is_comma_list_key(key)
+            args = self._tokens_to_args(value_tokens, split_commas=split_commas)
             if key in WINDOW_RULE_NAMES:
                 return _one_line_to_window_rule(args, line)
             return Directive(key=key, args=args, line=line)
