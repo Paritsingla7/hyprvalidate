@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from luaparser.astnodes import Assign, Call, Name, Table
 
 from hyprvalidate.luaast import reader
-from hyprvalidate.luaast.writer import hlcall, chunk, to_source, luatable, member
+from hyprvalidate.luaast.writer import hlcall, chunk, to_source, luatable, member, anon_function
 
 
 def _roundtrip(*statements):
@@ -76,6 +76,31 @@ def test_array_style_table_round_trips():
     table = reparsed_call.args[0]
     values = [reader.resolve_literal(f.value).value for f in table.fields]
     assert values == [3, "horizontal", "workspace"]
+
+
+def test_non_identifier_dict_key_uses_bracketed_string_syntax():
+    """Real hyprlang keys like 'col.active_border' aren't valid bare Lua
+    identifiers (dots aren't allowed) - found running the converter
+    against the real config, not anticipated up front."""
+    call = hlcall("hl.config", {"col.active_border": "x", "normal": 1})
+    src, tree = _roundtrip(call)
+    assert '["col.active_border"]' in src
+    reparsed_call = next(n for n in reader.walk(tree) if isinstance(n, Call))
+    table = reparsed_call.args[0]
+    values = {}
+    for f in table.fields:
+        key = f.key.s.decode() if hasattr(f.key, "s") else f.key.id
+        values[key] = reader.resolve_literal(f.value).value
+    assert values == {"col.active_border": "x", "normal": 1}
+
+
+def test_anon_function_wraps_statements_and_round_trips():
+    fn = anon_function([hlcall("hl.exec_cmd", "mako"), hlcall("hl.exec_cmd", "hypridle")])
+    call = hlcall("hl.on", "hyprland.start", fn)
+    src, tree = _roundtrip(call)
+    reparsed_call = next(n for n in reader.walk(tree) if isinstance(n, Call))
+    assert reader.resolve_dotted_name(reparsed_call.func) == "hl.on"
+    assert reader.resolve_literal(reparsed_call.args[0]).value == "hyprland.start"
 
 
 if __name__ == "__main__":

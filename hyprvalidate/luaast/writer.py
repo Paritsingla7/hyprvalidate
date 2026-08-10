@@ -9,10 +9,12 @@ round-trip incorrectly.
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Iterable, List, Tuple, Union
 
 from luaparser import ast as luaast
 from luaparser.astnodes import (
+    AnonymousFunction,
     Call,
     Chunk,
     Block,
@@ -81,6 +83,20 @@ def _to_expr(value: Any) -> Node:
     raise TypeError(f"don't know how to build a Lua expression from {type(value)!r}")
 
 
+_VALID_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _field_for_key(key: str, value: Node) -> Field:
+    """A Lua table key that isn't a valid bare identifier (contains a dot,
+    hyphen, etc - real hyprlang keys like `col.active_border` do) must be
+    written as a bracketed string key (`["col.active_border"] = ...`), not
+    a bare Name - found by actually running the converter against the real
+    config, not anticipated up front."""
+    if _VALID_IDENTIFIER.match(key):
+        return Field(key=luaname(key), value=value)
+    return Field(key=luastr(key), value=value, between_brackets=True)
+
+
 def luatable(items: Union[Dict[str, Any], Iterable[Any], Iterable[Tuple[str, Any]]]) -> Table:
     """Build a Lua table. A dict (or an iterable of (key, value) pairs)
     becomes a record-style table `{ key = value, ... }`; any other
@@ -97,12 +113,16 @@ def luatable(items: Union[Dict[str, Any], Iterable[Any], Iterable[Tuple[str, Any
 
     if pairs is not None:
         for key, value in pairs:
-            fields.append(Field(key=luaname(key), value=_to_expr(value)))
+            fields.append(_field_for_key(key, _to_expr(value)))
     else:
         for value in items:
             fields.append(Field(key=None, value=_to_expr(value)))
 
     return Table(fields=fields)
+
+
+def anon_function(statements: List[Node]) -> AnonymousFunction:
+    return AnonymousFunction(args=[], body=Block(body=statements))
 
 
 def hlcall(dotted_name: str, *args: Any) -> Call:
