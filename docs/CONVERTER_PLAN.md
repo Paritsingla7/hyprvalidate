@@ -1,8 +1,15 @@
 # Converter implementation — task list
 
-Planning only. Nothing here is built yet. Rows 5-7 in `docs/PLAN.md`,
-broken into branch-sized tasks matching the workflow used for the
-Validator (one task = one branch, tested before commit, PR into main).
+**Status: implemented.** All tasks below (5.1, 5.2, 6.1, 7.1-7.5) are
+built and tested on `feature/converter-implementation`, one commit per
+task. `hyprvalidate convert <file.conf>` exists and converts the
+project's own real `hyprland.conf` to valid Lua. This doc is kept as the
+design record - the reasoning behind each decision below is why the
+mapper is shaped the way it is, not a plan for future work.
+
+Rows 5-7 in `docs/PLAN.md`, broken into branch-sized tasks matching the
+workflow used for the Validator (one task = one branch, tested before
+commit, PR into main).
 
 ## Architecture, resolved before writing tasks (not guessed)
 
