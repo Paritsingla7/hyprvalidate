@@ -32,6 +32,34 @@ Scope, stated explicitly rather than left implicit:
     example: `hl.monitor(nil, {...})` in a GPT-fabricated test config
     resolves as a valid symbol (it is) but calls it with 2 args against a
     1-required-param signature - exactly what this closes.
+  - Spec-table field checking: any call whose parameter is typed as a
+    specific schema class (`hl.monitor`'s `spec: HL.MonitorSpec`,
+    `hl.device`'s `HL.DeviceSpec`, `hl.gesture`'s `HL.GestureSpec`,
+    `hl.bind`'s `opts?: HL.BindOptions`, `hl.window_rule`'s
+    `HL.WindowRuleSpec`, `hl.permission`'s `HL.PermissionSpec`) has that
+    table's keys checked against the class's actual fields, recursing when
+    a field's own type is itself a class. Found via re-examining real test
+    evidence: `hl.monitor({resolution = "preferred", ...})` passes with
+    zero findings even after arity checking, because `resolution` isn't a
+    real `HL.MonitorSpec` field (the real one is `mode`) and nothing
+    checked spec-table *contents* before this.
+    Deliberately excludes `hl.config` - its own param type (`HL.ConfigOpt`)
+    is a *parallel*, differently-shaped representation of the same data (a
+    nested class hierarchy vs. `config_value_types`'s flattened dotted
+    map - verified they're not 1:1, e.g. `general.col` nests as its own
+    sub-class in one but not the other) - unifying them would mean
+    re-verifying every config section against a hierarchy that hasn't been
+    checked yet, for no found benefit. `hl.config` keeps using its already
+    -tested path; this is a second, narrower mechanism for everything else.
+    Also excludes `hl.window_rule` specifically - found by this row's own
+    test suite flooding false positives against the real config:
+    `HL.WindowRuleSpec` only types 3 universal fields (enabled/match/name),
+    unlike its siblings `HL.LayerRuleSpec` (13 fields) and
+    `HL.WorkspaceRuleSpec` (17 fields) which are fully typed and DO get
+    checked. Per-rule-type window fields (move/float/workspace/
+    suppress_event/no_focus) are dynamically dispatched and deliberately
+    absent from the stub - the same fact row 4 already noted, rediscovered
+    here.
 """
 
 from __future__ import annotations
@@ -50,6 +78,7 @@ class FindingKind(str, Enum):
     UNKNOWN_CONFIG_KEY = "unknown_config_key"
     TYPE_MISMATCH = "type_mismatch"
     ARITY_MISMATCH = "arity_mismatch"
+    UNKNOWN_SPEC_FIELD = "unknown_spec_field"
 
 
 @dataclass
@@ -305,6 +334,57 @@ def _field_key_name(key_expr) -> str | None:
     return None
 
 
+def _check_spec_table(
+    schema: Schema, table: Table, class_name: str, line: int | None
+) -> list[Finding]:
+    """Check a table's keys/values against a schema class's own fields
+    (e.g. HL.MonitorSpec) - the row-10 mechanism, distinct from
+    _walk_config_table's dotted-path check (row 4, hl.config only). See
+    module docstring for why these stay separate rather than unified."""
+    findings: list[Finding] = []
+    cls = schema.classes.get(class_name)
+    if cls is None:
+        return findings  # shouldn't happen if class_name came from the schema itself
+
+    for field in table.fields:
+        if field.key is None:
+            continue
+        key_name = _field_key_name(field.key)
+        if key_name is None:
+            continue
+        field_line = field.first_token.line if field.first_token else line
+
+        type_expr = cls.fields.get(key_name)
+        if type_expr is None:
+            findings.append(Finding(
+                FindingKind.UNKNOWN_SPEC_FIELD, field_line,
+                f"'{key_name}' is not a field of {class_name}",
+            ))
+            continue
+
+        if isinstance(field.value, Table):
+            if type_expr in schema.classes:
+                findings.extend(_check_spec_table(schema, field.value, type_expr, field_line))
+            elif not _has_table_alternative(type_expr):
+                findings.append(Finding(
+                    FindingKind.TYPE_MISMATCH, field_line,
+                    f"'{key_name}' on {class_name} expects {type_expr}, got a table",
+                ))
+            continue
+
+        literal = reader.resolve_literal(field.value)
+        if literal is not None:
+            if not _scalar_kind_matches(literal.kind, type_expr) and not _has_table_alternative(type_expr):
+                findings.append(Finding(
+                    FindingKind.TYPE_MISMATCH, field_line,
+                    f"'{key_name}' on {class_name} expects {type_expr}, got {literal.kind} ({literal.value!r})",
+                ))
+        # else: not a literal (variable/call) - can't check, accepted, same
+        # as _walk_config_table's documented behavior.
+
+    return findings
+
+
 def check(schema: Schema, tree) -> list[Finding]:
     """Run every check against an already-parsed Lua AST (from
     hyprvalidate.luaast.reader.parse/parse_file)."""
@@ -339,6 +419,29 @@ def check(schema: Schema, tree) -> list[Finding]:
                         FindingKind.ARITY_MISMATCH, line,
                         f"{dotted}: expects at most {max_args} argument(s), got {n_args}",
                     ))
+
+                # Row 10: check spec-table arguments against their own
+                # schema class, for every function except hl.config (its
+                # own already-tested dotted-path mechanism, see module
+                # docstring) and hl.window_rule specifically - found by
+                # this row's own test suite flooding false positives on
+                # the real config: HL.WindowRuleSpec only types 3
+                # universal fields (enabled/match/name), unlike its
+                # siblings HL.LayerRuleSpec (13 fields) and
+                # HL.WorkspaceRuleSpec (17 fields) which are fully typed.
+                # Per-rule-type fields (move/float/workspace/suppress_event/
+                # no_focus) are dynamically dispatched and deliberately not
+                # in the stub at all - same fact already noted in row 4's
+                # original scope notes, just re-discovered the hard way
+                # when generalizing.
+                if dotted not in ("hl.config", "hl.window_rule"):
+                    for idx, param in enumerate(sig.params):
+                        if param.type_expr in schema.classes and idx < len(node.args):
+                            arg = node.args[idx]
+                            if isinstance(arg, Table):
+                                findings.extend(
+                                    _check_spec_table(schema, arg, param.type_expr, line)
+                                )
 
         if dotted == "hl.config" and node.args and isinstance(node.args[0], Table):
             findings.extend(_walk_config_table(schema, node.args[0], "", line))
