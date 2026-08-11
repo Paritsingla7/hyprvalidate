@@ -14,3 +14,6 @@ hyprvalidate = "hyprvalidate.cli:main"
 dev = [
     "pytest>=7.0",
 ]
+
+[tool.setuptools.packages.find]
+include = ["hyprvalidate*"]
