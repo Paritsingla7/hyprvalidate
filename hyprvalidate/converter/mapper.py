@@ -30,11 +30,102 @@ from __future__ import annotations
 
 from ..hyprlang.parser import Block, Directive, HyprlangFile, VariableAssign, WindowRule
 from ..luaast.writer import anon_function, hlcall
+from dataclasses import dataclass
+
 from ..checker import _has_table_alternative, _scalar_kind_matches
 from .coerce import coerce_value
 from .dispatch import classify_block
 from .rename import BIND_FLAG_RENAME, DISPATCHER_RENAME
 from .todo import TodoNote, check_bind_flag, check_dispatcher, check_source_directive, render_program
+
+# Module names for --split output. Chosen to match the hand-migration that
+# already exists for this project's own config (configs/hyprland-lua/*.lua),
+# which is the only worked example of "correctly modularized" available.
+M_ENTRY = "hyprland"        # the require()-ing entry point
+M_PLUGINS = "plugins"
+M_MONITORS = "monitors"
+M_DEVICES = "devices"
+M_AUTOSTART = "autostart"
+M_ENV = "env"
+M_PERMISSIONS = "permissions"
+M_APPEARANCE = "appearance"
+M_INPUT = "input"
+M_KEYBINDS = "keybinds"
+M_WINDOWRULES = "windowrules"
+M_OTHER = "other"
+
+# hyprlang directive key -> module. `bind*` is handled by prefix, not here.
+_DIRECTIVE_MODULE = {
+    "monitor": M_MONITORS,
+    "gesture": M_INPUT,
+    "exec-once": M_AUTOSTART,
+    "exec": M_AUTOSTART,
+    "env": M_ENV,
+    "envd": M_ENV,
+    "permission": M_PERMISSIONS,
+    "windowrule": M_WINDOWRULES,
+    "windowrulev2": M_WINDOWRULES,
+    "layerrule": "layerrules",
+    "workspace": "workspacerules",
+    "source": M_ENTRY,
+}
+
+# hyprlang config-section name -> module, for the sections where grouping
+# several under one file matches how people actually think about them
+# (everything visual together, etc). Any section NOT listed here gets its
+# own file named after the section - deterministic, and avoids inventing a
+# taxonomy for sections this project has no worked example of.
+_CONFIG_SECTION_MODULE = {
+    "general": M_APPEARANCE,
+    "decoration": M_APPEARANCE,
+    "animations": M_APPEARANCE,
+    "master": M_APPEARANCE,
+    "dwindle": M_APPEARANCE,
+    "misc": M_APPEARANCE,
+    "group": M_APPEARANCE,
+    "cursor": M_APPEARANCE,
+    "input": M_INPUT,
+    "gestures": M_INPUT,
+    "binds": M_KEYBINDS,
+    "ecosystem": M_PERMISSIONS,
+    "plugin": M_PLUGINS,
+}
+
+# A block that becomes a top-level hl.X(spec) call (per dispatch.py) -> module.
+_SPEC_BLOCK_MODULE = {
+    "device": M_DEVICES,
+    "monitor": M_MONITORS,
+    "gesture": M_INPUT,
+    "permission": M_PERMISSIONS,
+    "window_rule": M_WINDOWRULES,
+    "layer_rule": "layerrules",
+    "workspace_rule": "workspacerules",
+}
+
+
+@dataclass
+class ConvertedItem:
+    """One emitted statement, tagged for module assignment. `line` is the
+    original hyprlang source line, used to order modules in the entry file
+    so the output reads in the same order as the input did."""
+    node: object | None
+    note: TodoNote | None
+    module: str
+    line: int | None
+
+
+def _directive_module(key: str) -> str:
+    if key.startswith("bind"):
+        return M_KEYBINDS
+    return _DIRECTIVE_MODULE.get(key, M_OTHER)
+
+
+def _config_section_module(section: str) -> str:
+    return _CONFIG_SECTION_MODULE.get(section, section)
+
+
+def _spec_block_module(block_name: str) -> str:
+    return _SPEC_BLOCK_MODULE.get(block_name, block_name)
 
 
 def _coerce_or_note(type_expr: str, raw: str, notes: list[TodoNote], key_name: str, line: int | None):
@@ -267,13 +358,12 @@ def _build_gesture(directive: Directive):
     return hlcall("hl.gesture", spec), None
 
 
-def convert(schema, hf: HyprlangFile) -> str:
-    """Converts a parsed hyprlang file (hyprvalidate.hyprlang.parser output)
-    into Lua source text, using the schema to decide dispatch/coercion/
-    validity rather than guessing. Anything not confidently resolved
-    becomes a `-- TODO(hyprvalidate convert): ...` comment instead of
-    silently wrong output."""
-    items = []
+def _convert_items(schema, hf: HyprlangFile) -> list[ConvertedItem]:
+    """Shared conversion pass behind both `convert` (flat) and
+    `convert_split` (modular). Yields one ConvertedItem per emitted
+    statement, tagged with its target module and original source line, in
+    source order."""
+    items: list[ConvertedItem] = []
 
     # exec-once has no direct call-shaped equivalent - the hand-migration
     # this project already did (see configs/hyprland-lua/autostart.lua)
@@ -291,32 +381,41 @@ def convert(schema, hf: HyprlangFile) -> str:
             continue  # already inlined at parse time (row 5.2)
 
         if isinstance(stmt, WindowRule):
-            items.append((_build_window_rule(stmt), None))
+            items.append(ConvertedItem(_build_window_rule(stmt), None, M_WINDOWRULES, stmt.line))
             continue
 
         if isinstance(stmt, Directive):
+            module = _directive_module(stmt.key)
             if stmt.key == "source":
-                items.append((None, check_source_directive(stmt.args[0] if stmt.args else "", stmt.line)))
+                note = check_source_directive(stmt.args[0] if stmt.args else "", stmt.line)
+                items.append(ConvertedItem(None, note, M_ENTRY, stmt.line))
             elif stmt.key == "exec-once":
                 if not exec_once_emitted:
                     exec_once_emitted = True
                     fn = anon_function([hlcall("hl.exec_cmd", cmd) for cmd in exec_once_cmds])
-                    items.append((hlcall("hl.on", "hyprland.start", fn), None))
+                    items.append(ConvertedItem(
+                        hlcall("hl.on", "hyprland.start", fn), None, module, stmt.line
+                    ))
                 # subsequent exec-once directives are already folded in above
             elif stmt.key == "env" and len(stmt.args) == 2:
-                items.append((hlcall("hl.env", stmt.args[0], stmt.args[1]), None))
+                items.append(ConvertedItem(
+                    hlcall("hl.env", stmt.args[0], stmt.args[1]), None, module, stmt.line
+                ))
             elif stmt.key.startswith("bind"):
-                items.append(_build_bind(stmt))
+                node, note = _build_bind(stmt)
+                items.append(ConvertedItem(node, note, module, stmt.line))
             elif stmt.key == "monitor":
-                items.append(_build_monitor(stmt))
+                node, note = _build_monitor(stmt)
+                items.append(ConvertedItem(node, note, module, stmt.line))
             elif stmt.key == "gesture":
-                items.append(_build_gesture(stmt))
+                node, note = _build_gesture(stmt)
+                items.append(ConvertedItem(node, note, module, stmt.line))
             else:
-                items.append((None, TodoNote(
+                items.append(ConvertedItem(None, TodoNote(
                     "unmodeled_directive",
                     f"'{stmt.key}' isn't a modeled top-level directive",
                     stmt.line,
-                )))
+                ), module, stmt.line))
             continue
 
         if isinstance(stmt, Block):
@@ -328,12 +427,12 @@ def convert(schema, hf: HyprlangFile) -> str:
                 # and its sub-block names (e.g. "dynamic-cursors") often
                 # aren't even valid Lua identifiers. Flag for manual
                 # conversion rather than emitting empty/invalid tables.
-                items.append((None, TodoNote(
+                items.append(ConvertedItem(None, TodoNote(
                     "plugin_config",
                     "plugin { ... } config is dynamically registered per-plugin - "
                     "not converted automatically, convert manually",
                     stmt.line,
-                )))
+                ), M_PLUGINS, stmt.line))
                 continue
 
             target = classify_block(schema, stmt.name)
@@ -344,11 +443,89 @@ def convert(schema, hf: HyprlangFile) -> str:
                 sig = parse_fun_signature(cls_field)
                 class_name = next(p.type_expr for p in sig.params if p.type_expr in schema.classes)
                 call, notes = _build_spec_call(schema, target, class_name, stmt, notes)
-                items.append((call, _combine_notes(notes)))
+                module = _spec_block_module(stmt.name)
             else:
                 inner = _flatten_config_block(schema, stmt, stmt.name, notes)
                 call = hlcall("hl.config", {stmt.name: inner})
-                items.append((call, _combine_notes(notes)))
+                module = _config_section_module(stmt.name)
+            items.append(ConvertedItem(call, _combine_notes(notes), module, stmt.line))
             continue
 
-    return render_program(items)
+    return items
+
+
+def convert(schema, hf: HyprlangFile) -> str:
+    """Converts a parsed hyprlang file (hyprvalidate.hyprlang.parser output)
+    into Lua source text, using the schema to decide dispatch/coercion/
+    validity rather than guessing. Anything not confidently resolved
+    becomes a `-- TODO(hyprvalidate convert): ...` comment instead of
+    silently wrong output."""
+    items = _convert_items(schema, hf)
+    return render_program([(i.node, i.note) for i in items])
+
+
+_ENTRY_HEADER = """\
+-- Generated by hyprvalidate convert --split.
+--
+-- Deployment note: require() resolves modules relative to the directory
+-- this file lives in, so copy every .lua file here flat into
+-- ~/.config/hypr/ (this file must stay named hyprland.lua there). Nesting
+-- the modules one level deeper needs extra package.path setup.
+--
+-- Order below follows the original config's own order. Each require() runs
+-- its module body immediately, so statements that depend on order (repeated
+-- config keys, duplicate binds, window-rule precedence) keep the relative
+-- order they had in the source file.
+"""
+
+
+def convert_split(schema, hf: HyprlangFile) -> dict[str, str]:
+    """Convert into a set of modular files instead of one flat file.
+
+    Returns {filename: lua_source}, always including the `hyprland.lua`
+    entry point that require()s the rest. Modules with no statements
+    produce no file.
+
+    Why bucketing by module is safe despite reordering relative to the
+    source file: statements are grouped by subsystem, and within a module
+    source order is preserved exactly. The three things in hyprlang where
+    order actually carries meaning - repeated config keys (last write wins,
+    confirmed against Hyprland's own hlConfig implementation), duplicate
+    binds on one key (all fire, in order), and window-rule precedence - are
+    each confined to a single module by this mapping, so their relative
+    order survives. Cross-module order is between independent subsystems.
+    `tests/test_converter_split.py` asserts both halves of that claim
+    mechanically rather than trusting this comment.
+    """
+    items = _convert_items(schema, hf)
+
+    buckets: dict[str, list[ConvertedItem]] = {}
+    for item in items:
+        buckets.setdefault(item.module, []).append(item)
+
+    entry_items = buckets.pop(M_ENTRY, [])
+
+    # Modules appear in the entry file in the order their first statement
+    # appeared in the original config, so reading top to bottom matches the
+    # source. Ties (and missing line numbers) fall back to the name so the
+    # output is deterministic.
+    module_order = sorted(
+        buckets, key=lambda m: (min((i.line or 0) for i in buckets[m]), m)
+    )
+
+    files: dict[str, str] = {}
+    for module in module_order:
+        body = render_program([(i.node, i.note) for i in buckets[module]])
+        files[f"{module}.lua"] = body.rstrip("\n") + "\n"
+
+    entry_parts = [_ENTRY_HEADER]
+    if entry_items:
+        entry_parts.append(
+            render_program([(i.node, i.note) for i in entry_items]).rstrip("\n") + "\n"
+        )
+    entry_parts.append(
+        "\n".join(f'require("{m}")' for m in module_order) + "\n" if module_order else ""
+    )
+    files[f"{M_ENTRY}.lua"] = "\n".join(p for p in entry_parts if p)
+
+    return files

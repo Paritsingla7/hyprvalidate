@@ -50,6 +50,20 @@ class Schema:
             sort_keys=True,
         )
 
+    @classmethod
+    def from_json(cls, text: str) -> "Schema":
+        """Reconstruct a Schema from to_json()'s output - the inverse.
+        Exists for consumers that can't read the stub directly (e.g. a
+        browser environment with no filesystem access to
+        /usr/share/hypr/stubs), so they can load a frozen snapshot instead
+        of re-parsing hl.meta.lua."""
+        data = json.loads(text)
+        return cls(
+            classes={k: ClassInfo(**v) for k, v in data.get("classes", {}).items()},
+            aliases={k: AliasInfo(**v) for k, v in data.get("aliases", {}).items()},
+            config_value_types=data.get("config_value_types", {}),
+        )
+
 
 # ---@class Name[: Parent]
 _RE_CLASS = re.compile(r'^---@class\s+([\w.]+)')

@@ -2,21 +2,51 @@
 
 Living document. Update this when scope changes, not just when code lands.
 
+## Status (2026-08-11)
+
+All 11 rows below are **done**. Both products are shippable:
+`hyprvalidate convert <file.conf>` (flat or `--split` into a modular
+directory) and `hyprvalidate check <file.lua...|dir>`. 167 tests passing.
+
+What's left is not engineering on the core tool - it's finishing the loop:
+- License (MIT, being added now) - currently "TBD" in the README.
+- README doesn't document `convert`/`--split` yet - `check`-only.
+- The public-facing site (marketing, install, live demo) - in progress.
+- `--fix` (auto-repair) mode - explicitly deferred, no scope decided.
+- Housekeeping: stale merged-PR branches on origin; an open question on
+  whether to delete `configs/generated-lua-configs.lua` (the GPT-fabricated
+  test fixture), asked twice, never answered.
+
 ## What we're building
 
-Two features, sharing one foundation:
+Two products, sharing one foundation. Each has to stand on its own.
 
-1. **Validator** (primary, build first): reads an existing Hyprland Lua
-   config — hand-written, or output from any of the existing converters —
-   and reports every place it references a config key, dispatcher, or option
-   that doesn't exist in the real Hyprland API, or gives a value of the
-   wrong type. Then runs `luac -p` as a final syntax gate.
-2. **Converter** (secondary, build after): turns an old `hyprland.conf`
-   into Lua, the same job the four existing tools attempt — but with symbol
-   names and value types looked up from the schema instead of guessed from
-   the input string or hand-typed into a table.
+1. **Converter** (`hyprvalidate convert`) — the front door. Turns an old
+   `hyprland.conf` into Lua, the same job the four existing tools attempt,
+   but with symbol names and value types looked up from the schema instead
+   of guessed from the input string or hand-typed into a table. Emits a
+   modular directory (`--split`) rather than one flat file. This is what
+   people arrive looking for.
+2. **Validator** (`hyprvalidate check`) — the depth. Reads an existing
+   Hyprland Lua config — hand-written, converted by us, or output from any
+   other tool — and reports every place it references a config key,
+   dispatcher, or option that doesn't exist in the real Hyprland API, or
+   gives a value of the wrong type. Runs `luac -p` as a syntax gate first.
 
 Both are consumers of the same schema. Neither is useful without it.
+
+### Positioning (decided 2026-08-11, drives roadmap priority)
+
+The market *demand* is conversion; the market *gap* is validation. So
+conversion is the entry point and validation is what makes the conversion
+trustworthy — `convert` runs the validator on its own output, which means
+users meet the validation story by using the converter, without having to
+seek it out. Ordering everywhere (docs, README, site) is convert-then-check.
+
+This is not "validation bolted onto a converter for marketing." Each half
+has to be independently good: someone who only has hyprlang gets a better
+conversion than anything else available, and someone who's already on Lua
+gets a validator nothing else offers at all.
 
 ## Why
 
@@ -59,6 +89,7 @@ feature(s) break or can't start without it.
 | 8 | **CLI** (`hyprvalidate/cli.py`) — `hyprvalidate check <file.lua>...` (needs 2, 3, 4). `convert` is not implemented and not stubbed - it needs rows 5-7, which don't exist yet | everything above, per subcommand | Validator (done, shippable now), Converter (not yet - not scaffolded ahead of need) | **`check` done** — `tests/test_cli.py`, 7/7 passing, including the real installed console-script entry point end to end. Exit codes: 0 clean, 1 schema findings, 2 invalid Lua/missing stub. Manually run against all four real competitor sample outputs in one command - 3/4 exit 2 (invalid Lua) at the right lines, 1/4 exit 1 at the exact known bug |
 | 9 | **Call-shape (arity) checker** — extends row 4: for symbols that resolve to a *named* signature in the stub (e.g. `hl.monitor` is `fun(spec: HL.MonitorSpec): nil`), checks the actual call's argument count against required/optional parameters. Found missing: `hl.monitor(nil, {...})` in a real GPT-fabricated test config resolved as a valid symbol (it is) but was never checked against its own signature (one required param, not two) - a real, found-not-hypothetical gap. Scope: many stub functions are typed `fun(...): X` (fully untyped params - the dsp.* dispatcher builders, `env`, `curve`, `animation`, etc) and are NOT checked here, honestly, because there's nothing to check them against; only the subset with named parameters (`bind`, `config`, `device`, `exec_cmd`, `gesture`, `monitor`, `on`, `permission`, `timer`, `window_rule`, `workspace_rule`) gets arity checking. Argument *type* checking (is arg 1 actually a string) is an explicit non-goal for this row - count only. | 1, 4 | Validator - closes the exact gap found in the GPT-fabrication test | **Done** — `tests/test_arity_checker.py`, 10/10 passing, including the exact `hl.monitor(nil, {...})` case caught (was silently accepted before this row), and a regression check that the real `hyprland-lua/` config is still zero findings with arity checking active |
 | 10 | **Spec-table field checker** — generalizes row 4's key/type checking beyond `hl.config`: for any call whose param is typed as a specific schema class (`hl.monitor`'s `spec: HL.MonitorSpec`, `hl.device`'s `HL.DeviceSpec`, `hl.gesture`'s `HL.GestureSpec`, `hl.bind`'s `opts?: HL.BindOptions`, `hl.window_rule`'s `HL.WindowRuleSpec`, `hl.permission`'s `HL.PermissionSpec`), checks the table's keys against that class's actual fields (recursing when a field's own type is itself a class). Found missing, live-verified: `hl.monitor({resolution="preferred", ...})` - `resolution` isn't a real `HL.MonitorSpec` field (the real one is `mode`) - passes with zero findings today even with row 9's arity fix applied, because nothing checks a spec table's *contents*, only `hl.config`'s. Deliberately does NOT touch `hl.config`'s existing path (`config_value_types`, already tested) - `hl.config`'s own param type (`HL.ConfigOpt`) is a *parallel*, differently-shaped representation of the same data (a nested class hierarchy vs. a flattened dotted map; verified they're not 1:1 identical, e.g. `general.col` nests as its own sub-class in one but not the other) - unifying the two would mean re-verifying every config section against a hierarchy that hasn't been checked yet, for no found benefit. Lower-risk to add a second, narrower mechanism for everything else. Also excludes `hl.window_rule` specifically - its own test suite caught this: `HL.WindowRuleSpec` only types 3 universal fields (enabled/match/name), unlike its fully-typed siblings `HL.LayerRuleSpec` (13 fields) and `HL.WorkspaceRuleSpec` (17 fields, both DO get checked) - per-rule-type window fields are dynamically dispatched and deliberately absent from the stub, the same fact row 4 already noted, rediscovered the hard way when generalizing. | 1, 9 | Validator - closes a gap found by re-examining real test evidence, not a hypothetical | **Done** — `tests/test_spec_table_checker.py`, 11/11 passing, including the exact `hl.monitor` gap now caught, the exact historical `mouse`-vs-`drag` `HL.BindOptions` bug from this project caught as a live example, a locked-in regression test for the `hl.window_rule` exclusion (found necessary by this same test file flooding false positives before the exclusion was added), and the real `hyprland-lua/` config still zero findings |
+| 11 | **Modular `--split` output** — `convert_split()` buckets every converted statement into a module (monitors/devices/input/keybinds/windowrules/appearance/autostart/env/plugins, or the config section's own name if unlisted) instead of one flat file, plus a `hyprland.lua` entry point that `require()`s them in source order. Module boundaries match this project's own hand-migration (`configs/hyprland-lua/*.lua`), the only worked example of "correctly modularized" available - one deliberate divergence: device blocks all land in one `devices.lua` rather than split by guessed intent (output vs. sensitivity), since a tool shouldn't guess intent. `hyprvalidate check` now also accepts a directory (expands to its `.lua` files), closing the loop: `convert --split` into a dir, then `check` that dir in one command. | 1, 7, 8 | Converter - this is what makes the converter's output usable as a real config, not a 400-line wall of Lua | **Done** — `tests/test_converter_split.py`, 13/13 passing, including the two invariants that make bucketing safe (nothing lost/duplicated; relative order preserved within each module, since order carries meaning for repeated config keys, duplicate binds, and window-rule precedence), and `tests/test_cli.py`'s end-to-end `convert --split` → `check <dir>` round trip against the real `hyprland.conf` |
 
 Read top to bottom for build order: **1 → 2 → 3 → 4** gets the Validator
 shippable end to end without touching hyprlang at all. **5 → 6 → 7 → 8**

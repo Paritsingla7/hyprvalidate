@@ -111,6 +111,86 @@ def test_convert_real_config_end_to_end(tmp_path):
     assert out.is_file()
 
 
+def test_convert_split_writes_a_module_directory(tmp_path):
+    src = tmp_path / "in.conf"
+    src.write_text(
+        "bind = SUPER, Q, killactive,\n"
+        "general {\n    gaps_in = 5\n}\n"
+    )
+    out = tmp_path / "modules"
+    code, lines = convert_file(src, DEFAULT_STUB_PATH, None, out)
+    assert code == 0
+    assert (out / "hyprland.lua").is_file()
+    assert (out / "keybinds.lua").is_file()
+    assert (out / "appearance.lua").is_file()
+    assert 'require("keybinds")' in (out / "hyprland.lua").read_text()
+
+
+def test_convert_split_output_passes_its_own_check(tmp_path):
+    """The whole point of the split feature: convert into a directory, then
+    validate that directory in one command."""
+    src = tmp_path / "in.conf"
+    src.write_text("bind = SUPER, Q, killactive,\ngeneral {\n    gaps_in = 5\n}\n")
+    out = tmp_path / "modules"
+    convert_file(src, DEFAULT_STUB_PATH, None, out)
+
+    code, lines = check_files([out], DEFAULT_STUB_PATH)
+    assert code == 0, lines
+
+
+def test_check_expands_a_directory_into_its_lua_files(tmp_path):
+    d = tmp_path / "cfg"
+    d.mkdir()
+    (d / "a.lua").write_text(VALID_SNIPPET)
+    (d / "b.lua").write_text(BAD_TYPE_SNIPPET)
+    (d / "notes.txt").write_text("not lua, must be ignored")
+
+    code, lines = check_files([d], DEFAULT_STUB_PATH)
+    assert code == 1
+    assert any("b.lua" in line and "type_mismatch" in line for line in lines)
+
+
+def test_check_on_a_directory_with_no_lua_files_is_an_error(tmp_path):
+    d = tmp_path / "empty"
+    d.mkdir()
+    code, lines = check_files([d], DEFAULT_STUB_PATH)
+    assert code == 2
+    assert "no .lua files" in lines[0]
+
+
+def test_convert_split_real_config_end_to_end(tmp_path):
+    out = tmp_path / "modules"
+    code, lines = convert_file(
+        REPO_ROOT.parent / "configs" / "hyprland.conf", DEFAULT_STUB_PATH, None, out
+    )
+    assert code == 1  # the real config's own joke value, see test_converter_mapper.py
+    assert (out / "hyprland.lua").is_file()
+
+    check_code, check_lines = check_files([out], DEFAULT_STUB_PATH)
+    assert check_code == 1
+    assert sum(1 for l in check_lines if "type_mismatch" in l) == 1
+
+
+def test_installed_entry_point_convert_split_works_end_to_end(tmp_path):
+    entry_point = Path(sys.executable).parent / "hyprvalidate"
+    assert entry_point.is_file(), f"expected an installed console script at {entry_point}"
+
+    src = tmp_path / "in.conf"
+    src.write_text("bind = SUPER, Q, killactive,\n")
+    out = tmp_path / "modules"
+    result = subprocess.run(
+        [str(entry_point), "convert", str(src), "--split", str(out)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (out / "hyprland.lua").is_file()
+
+    checked = subprocess.run(
+        [str(entry_point), "check", str(out)], capture_output=True, text=True
+    )
+    assert checked.returncode == 0, checked.stdout
+
+
 def test_installed_entry_point_convert_works_end_to_end(tmp_path):
     entry_point = Path(sys.executable).parent / "hyprvalidate"
     assert entry_point.is_file(), f"expected an installed console script at {entry_point}"
