@@ -16,6 +16,10 @@ $ hyprvalidate check ~/.config/hypr
 3 file(s) checked, no issues found.
 ```
 
+**[Try it in your browser](https://paritsingla7.github.io/hyprvalidate/)** —
+runs the real converter and validator against a frozen schema snapshot, no
+install needed.
+
 ## Why
 
 Hyprland moved from the old `hyprland.conf` (hyprlang) format to a Lua-based
@@ -82,6 +86,12 @@ hyprvalidate/
   docs/
     PLAN.md                 the build plan - what, why, dependencies
     CONVERTER_PLAN.md        the converter's design record
+  site/                     the project site (GitHub Pages) - runs the real
+                              converter/checker in-browser via Pyodide,
+                              against a frozen schema.json snapshot
+  schema.json                the frozen snapshot the site's demo loads -
+                              regenerate with `hyprvalidate.schema.extractor`
+                              against a current install if the schema changes
 ```
 
 ## Usage

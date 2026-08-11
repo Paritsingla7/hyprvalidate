@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>hyprvalidate — schema-driven Hyprland config converter &amp; validator</title>
+<meta name="description" content="Convert an old hyprland.conf to Lua, and validate any Hyprland Lua config, both checked against Hyprland's own real schema instead of a hand-typed guess." />
+<style>
+  :root {
+    --bg: #eef2f5;
+    --surface: #e2e8ed;
+    --surface-2: #d7dfe5;
+    --ink: #0b1622;
+    --ink-soft: #3d4f5f;
+    --line: #c3cfd7;
+    --line-strong: #9fb0bb;
+    --accent: #0e8fa3;
+    --accent-ink: #06414a;
+    --warn: #b5602a;
+    --warn-ink: #7a3f18;
+    --danger: #b5402a;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1622; --surface: #101f30; --surface-2: #16283c;
+      --ink: #dce8f2; --ink-soft: #8fa6bd;
+      --line: #223449; --line-strong: #33506b;
+      --accent: #5ec8d8; --accent-ink: #bdeef5;
+      --warn: #e0834f; --warn-ink: #f4c6a4; --danger: #e0834f;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b1622; --surface: #101f30; --surface-2: #16283c;
+    --ink: #dce8f2; --ink-soft: #8fa6bd;
+    --line: #223449; --line-strong: #33506b;
+    --accent: #5ec8d8; --accent-ink: #bdeef5;
+    --warn: #e0834f; --warn-ink: #f4c6a4; --danger: #e0834f;
+  }
+  :root[data-theme="light"] {
+    --bg: #eef2f5; --surface: #e2e8ed; --surface-2: #d7dfe5;
+    --ink: #0b1622; --ink-soft: #3d4f5f;
+    --line: #c3cfd7; --line-strong: #9fb0bb;
+    --accent: #0e8fa3; --accent-ink: #06414a;
+    --warn: #b5602a; --warn-ink: #7a3f18; --danger: #b5402a;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); line-height: 1.65; -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--accent); color: var(--bg); }
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible, textarea:focus-visible, .copybtn:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  code, pre, .mono { font-family: var(--mono); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 32px; }
+
+  header.top {
+    display: flex; align-items: center; justify-content: space-between; padding: 22px 0;
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand .mark { font-family: var(--mono); font-size: 15px; color: var(--accent); }
+  .brand .name { font-family: var(--mono); font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
+  .top-links { display: flex; align-items: center; gap: 18px; font-family: var(--mono); font-size: 13px; }
+  .top-links a { color: var(--ink-soft); text-decoration: none; }
+  .top-links a:hover { color: var(--ink); }
+  .top-links .gh { color: var(--ink); border: 1px solid var(--line-strong); padding: 6px 12px; border-radius: 3px; white-space: nowrap; }
+  .top-links .gh:hover { border-color: var(--accent); color: var(--accent); }
+  @media (max-width: 480px) {
+    header.top { flex-wrap: wrap; row-gap: 12px; }
+    .top-links { gap: 14px; }
+    .top-links a:not(.gh) { display: none; }
+  }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 14px;
+  }
+  .ruled { border: none; border-top: 1px solid var(--line); margin: 64px 0; }
+
+  section.hero {
+    padding: 40px 0 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 40px;
+  }
+  @media (min-width: 920px) { section.hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); align-items: center; } }
+  h1.headline {
+    font-family: var(--mono); font-size: clamp(30px, 4vw, 44px); font-weight: 600;
+    line-height: 1.14; letter-spacing: -0.01em; margin: 0 0 20px; text-wrap: balance;
+  }
+  h1.headline .dim { color: var(--ink-soft); }
+  p.lede { font-size: 17.5px; color: var(--ink-soft); margin: 0 0 28px; max-width: 52ch; }
+  .cta-row { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn {
+    font-family: var(--mono); font-size: 14px; padding: 11px 18px; border-radius: 3px;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
+    border: 1px solid var(--line-strong); color: var(--ink); transition: border-color 120ms, color 120ms;
+    cursor: pointer; background: none;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .btn.primary:hover { opacity: 0.88; color: var(--bg); }
+
+  .stack-preview {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 18px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--ink-soft);
+  }
+  .stack-preview .row { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+  .stack-preview .row .fname { color: var(--ink); }
+  .stack-preview .row .bar { flex: 1; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+  .stack-preview .row .bar span { display: block; height: 100%; background: var(--accent); opacity: 0.55; }
+  .stack-preview .arrow { text-align: center; color: var(--accent); padding: 6px 0; font-size: 16px; }
+  .stack-preview .before { color: var(--ink-soft); font-size: 12px; padding-bottom: 8px; border-bottom: 1px dashed var(--line); margin-bottom: 10px; }
+
+  h2.section-title {
+    display: flex; align-items: baseline; gap: 12px; font-family: var(--sans); font-size: 25px;
+    font-weight: 600; margin: 0 0 8px; text-wrap: balance;
+  }
+  h2.section-title .tag { font-family: var(--mono); font-size: 13px; color: var(--accent); font-weight: 600; white-space: nowrap; }
+  p.section-dek { color: var(--ink-soft); max-width: 68ch; margin: 0 0 32px; }
+
+  /* --- live demo --- */
+  .demo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  @media (min-width: 880px) { .demo { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); align-items: start; } }
+  .demo-input, .demo-output {
+    border: 1px solid var(--line); border-radius: 6px; background: var(--surface); overflow: hidden;
+  }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 14px; border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 12px; color: var(--ink-soft);
+  }
+  .demo-input textarea {
+    display: block; width: 100%; min-height: 320px; border: none; resize: vertical;
+    background: var(--bg); color: var(--ink); font-family: var(--mono); font-size: 12.5px;
+    padding: 16px; line-height: 1.6;
+  }
+  .demo-input textarea:focus { outline: none; }
+  .demo-actions { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--line); }
+  .demo-status { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); }
+  .demo-status.err { color: var(--danger); }
+
+  .file-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .file-tab {
+    font-family: var(--mono); font-size: 12px; background: var(--bg); border: 1px solid var(--line);
+    color: var(--ink-soft); padding: 6px 10px; border-radius: 3px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center;
+  }
+  .file-tab[aria-selected="true"] { color: var(--ink); border-color: var(--accent); }
+  .file-tab .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
+  .demo-output pre.code {
+    margin: 0; padding: 16px; font-size: 12px; line-height: 1.65; color: var(--ink-soft);
+    max-height: 420px; overflow: auto; white-space: pre;
+  }
+  .demo-output pre.code .ln { display: inline-block; width: 2.6em; color: var(--line-strong); user-select: none; }
+  .findings { border-top: 1px solid var(--line); padding: 10px 14px 14px; }
+  .findings .f-item { font-family: var(--mono); font-size: 12px; color: var(--warn); padding: 5px 0; display: flex; gap: 8px; }
+  .findings .f-item .loc { color: var(--ink-soft); white-space: nowrap; }
+  .findings .f-empty { font-family: var(--mono); font-size: 12px; color: var(--accent); padding: 5px 0; }
+  .demo-placeholder { padding: 40px 20px; text-align: center; color: var(--ink-soft); font-size: 13.5px; }
+  .demo-note { font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); margin-top: 10px; }
+
+  .evidence { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-bottom: 36px; }
+  @media (min-width: 640px) { .evidence { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .stat { border: 1px solid var(--line); border-radius: 6px; padding: 16px 16px 14px; background: var(--surface); }
+  .stat .n { font-family: var(--mono); font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stat .n.bad { color: var(--warn); }
+  .stat .n.good { color: var(--accent); }
+  .stat .l { font-size: 12.5px; color: var(--ink-soft); margin-top: 4px; }
+
+  .annot { border-left: 2px solid var(--line-strong); padding: 4px 0 4px 18px; margin: 0 0 24px; display: flex; flex-direction: column; gap: 4px; }
+  .annot .src { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); }
+  .annot .note { font-size: 15px; }
+  .annot .note code { background: var(--surface); padding: 1px 6px; border-radius: 3px; font-size: 13px; }
+
+  .cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-bottom: 12px; }
+  @media (min-width: 720px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .card { border: 1px solid var(--line); border-radius: 6px; padding: 22px; background: var(--surface); display: flex; flex-direction: column; gap: 14px; }
+  .card .cmd { font-family: var(--mono); font-size: 13px; color: var(--accent); }
+  .card h3 { margin: 0; font-size: 17px; font-weight: 600; }
+  .card p { margin: 0; color: var(--ink-soft); font-size: 14.5px; }
+  .card ul { margin: 0; padding-left: 18px; color: var(--ink-soft); font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+  .card .codebit { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; font-family: var(--mono); font-size: 12.5px; color: var(--ink-soft); overflow-x: auto; }
+  .card .codebit .flag { color: var(--warn); }
+  .card .codebit .ok { color: var(--accent); }
+
+  .install-tabs { display: flex; gap: 6px; margin-bottom: 0; }
+  .install-tabs button { font-family: var(--mono); font-size: 12.5px; background: none; border: 1px solid var(--line); color: var(--ink-soft); padding: 8px 14px; cursor: pointer; border-radius: 4px 4px 0 0; border-bottom: none; position: relative; top: 1px; }
+  .install-tabs button[aria-selected="true"] { color: var(--ink); background: var(--surface); border-color: var(--line); }
+  .install-panel { border: 1px solid var(--line); border-radius: 0 4px 4px 4px; background: var(--surface); padding: 18px 20px; position: relative; }
+  .install-panel pre { margin: 0; font-family: var(--mono); font-size: 13px; color: var(--ink); white-space: pre-wrap; }
+  .install-panel .note { font-size: 12.5px; color: var(--ink-soft); margin-top: 12px; }
+  .copybtn { position: absolute; top: 14px; right: 14px; font-family: var(--mono); font-size: 11px; background: none; border: 1px solid var(--line-strong); color: var(--ink-soft); padding: 5px 9px; border-radius: 3px; cursor: pointer; }
+  .copybtn:hover { color: var(--accent); border-color: var(--accent); }
+
+  footer { padding: 36px 0 60px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-family: var(--mono); font-size: 12.5px; color: var(--ink-soft); }
+  footer a { color: var(--ink-soft); }
+  footer a:hover { color: var(--accent); }
+
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand"><span class="mark">◎</span><span class="name">hyprvalidate</span></div>
+    <div class="top-links">
+      <a href="#demo">try it</a>
+      <a href="#install">install</a>
+      <a href="https://github.com/Paritsingla7/hyprvalidate" class="gh">GitHub ↗</a>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div>
+      <p class="eyebrow">§0 — schema-driven, not guessed</p>
+      <h1 class="headline">Bring your old <span class="dim">hyprland.conf.</span> Get back working Lua.</h1>
+      <p class="lede">hyprvalidate converts an old hyprlang config into a modular set of Lua files — organized like Hyprland's own docs recommend, not dumped into one file — by looking up every symbol and value type in Hyprland's real API schema instead of a hand-typed table. Then it validates the result, and any Lua config you already have, the same way.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="#demo">Try it on your config →</a>
+        <a class="btn" href="#install">Install</a>
+      </div>
+    </div>
+    <div class="stack-preview" aria-hidden="true">
+      <div class="before mono">hyprland.conf — 527 lines, one file</div>
+      <div class="row"><span class="fname">hyprland.lua</span><span class="bar"><span style="width:8%"></span></span></div>
+      <div class="arrow">↓ convert --split</div>
+      <div class="row"><span class="fname">monitors.lua</span><span class="bar"><span style="width:15%"></span></span></div>
+      <div class="row"><span class="fname">devices.lua</span><span class="bar"><span style="width:22%"></span></span></div>
+      <div class="row"><span class="fname">input.lua</span><span class="bar"><span style="width:35%"></span></span></div>
+      <div class="row"><span class="fname">keybinds.lua</span><span class="bar"><span style="width:78%"></span></span></div>
+      <div class="row"><span class="fname">windowrules.lua</span><span class="bar"><span style="width:45%"></span></span></div>
+      <div class="row"><span class="fname">appearance.lua</span><span class="bar"><span style="width:30%"></span></span></div>
+    </div>
+  </section>
+
+  <hr class="ruled" />
+
+  <section id="demo">
+    <h2 class="section-title"><span class="tag">§1</span> Try it</h2>
+    <p class="section-dek">Runs the real converter and validator in your browser — the same Python code the CLI ships, checked against a frozen snapshot of Hyprland's schema. Edit the sample below, or paste in your own config.</p>
+
+    <div class="demo">
+      <div class="demo-input">
+        <div class="panel-head"><span>old hyprland.conf</span></div>
+        <textarea id="demo-textarea" spellcheck="false" aria-label="Old hyprlang config input"></textarea>
+        <div class="demo-actions">
+          <button class="btn primary" id="demo-run">Convert →</button>
+          <span class="demo-status" id="demo-status">loading…</span>
+        </div>
+      </div>
+      <div class="demo-output">
+        <div class="file-tabs" id="demo-tabs" hidden></div>
+        <div id="demo-body">
+          <div class="demo-placeholder">Converted files will appear here.</div>
+        </div>
+      </div>
+    </div>
+    <p class="demo-note">First run downloads a Python runtime (Pyodide, ~10MB) - subsequent runs are instant. Nothing you type leaves your browser.</p>
+  </section>
+
+  <hr class="ruled" />
+
+  <section id="converter">
+    <h2 class="section-title"><span class="tag">§2</span> The converter</h2>
+    <p class="section-dek">The job every existing hyprlang→Lua tool attempts — done by looking things up instead of guessing them.</p>
+    <div class="cards">
+      <div class="card">
+        <div class="cmd">$ hyprvalidate convert old.conf --split ~/.config/hypr</div>
+        <h3>Schema-derived, not hand-typed</h3>
+        <p>Dispatcher names, bind flags, and config keys are checked against Hyprland's real API at build and test time — not copied from memory into a table that quietly drifts.</p>
+        <div class="codebit">bindr = SUPER, Q, killactive<br>&nbsp;&nbsp;↳ hl.bind("SUPER + Q", <span class="ok">hl.dsp.window.close()</span>, { release = true })</div>
+      </div>
+      <div class="card">
+        <h3>Modular output</h3>
+        <p>Splits into one file per config area (monitors, keybinds, window rules, appearance, ...) with a <code>hyprland.lua</code> entry point that <code>require()</code>s the rest — matching the pattern Hyprland's own docs recommend, not one 400-line file.</p>
+        <ul>
+          <li>Statement order is preserved within each file</li>
+          <li>Every emitted file is checked before anything is written</li>
+          <li>Low-confidence conversions become a comment, never a guess</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <hr class="ruled" />
+
+  <section id="validator">
+    <h2 class="section-title"><span class="tag">§3</span> The validator</h2>
+    <p class="section-dek">Already on Lua? Point this at your config directly — no other tool checks a Hyprland Lua config against anything real.</p>
+
+    <div class="evidence">
+      <div class="stat"><div class="n good">51</div><div class="l">real dispatchers in Hyprland's own stub</div></div>
+      <div class="stat"><div class="n bad">53 / 12 / 2</div><div class="l">dispatcher-table sizes across 3 existing converters</div></div>
+      <div class="stat"><div class="n bad">0</div><div class="l">schema entries a fourth tool's own parser extracts (skips every <code>--</code> line)</div></div>
+      <div class="stat"><div class="n good">1</div><div class="l">source of truth: <code>hl.meta.lua</code>, reinstalled on every build</div></div>
+    </div>
+
+    <div class="annot">
+      <div class="src">HL.BindOptions, the installed stub</div>
+      <div class="note">The Lua wiki's own examples use <code>{ mouse = true }</code> — that field doesn't exist in the real schema. The real replacement is <code>drag</code>.</div>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="cmd">$ hyprvalidate check config.lua</div>
+        <h3>Checks the whole shape</h3>
+        <p>Unknown symbols, bad config keys, wrong value types, bad call arity, and invalid fields inside <code>hl.monitor</code>/<code>hl.device</code>/<code>hl.bind</code>/etc spec tables.</p>
+        <div class="codebit">hl.monitor({ <span class="flag">resolution</span> = "1920x1080" })<br>&nbsp;&nbsp;↳ 'resolution' is not a field of HL.MonitorSpec</div>
+      </div>
+      <div class="card">
+        <h3>Runs on directories too</h3>
+        <p>Point it at a single file or a whole <code>--split</code> output directory — every <code>.lua</code> file inside gets checked in one command.</p>
+        <div class="codebit">$ hyprvalidate check ~/.config/hypr<br>3 file(s) checked, no issues found.</div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="ruled" />
+
+  <section id="install">
+    <h2 class="section-title"><span class="tag">§4</span> Install</h2>
+    <p class="section-dek">Requires Hyprland v0.55+ (the Lua config API) and Python 3.10+.</p>
+
+    <div class="install-tabs" role="tablist" aria-label="Install method">
+      <button role="tab" aria-selected="true" id="tab-pipx">pipx</button>
+      <button role="tab" aria-selected="false" id="tab-git">git clone</button>
+    </div>
+    <div class="install-panel" id="panel-pipx" role="tabpanel">
+      <button class="copybtn" data-copy="pipx-cmd">copy</button>
+      <pre id="pipx-cmd">pipx install git+https://github.com/Paritsingla7/hyprvalidate.git
+hyprvalidate convert ~/.config/hypr/hyprland.conf --split ~/.config/hypr
+hyprvalidate check ~/.config/hypr</pre>
+      <p class="note">On Arch, install pipx with <code>sudo pacman -S python-pipx</code> — system Python is externally managed (PEP 668).</p>
+    </div>
+    <div class="install-panel" id="panel-git" role="tabpanel" hidden>
+      <button class="copybtn" data-copy="git-cmd">copy</button>
+      <pre id="git-cmd">git clone https://github.com/Paritsingla7/hyprvalidate.git
+cd hyprvalidate &amp;&amp; pip install .
+hyprvalidate convert ~/.config/hypr/hyprland.conf --split ~/.config/hypr
+hyprvalidate check ~/.config/hypr</pre>
+      <p class="note">On externally-managed Python, do this inside a venv rather than passing --break-system-packages.</p>
+    </div>
+  </section>
+
+  <footer>
+    <span>hyprvalidate — <a href="https://github.com/Paritsingla7/hyprvalidate/blob/main/LICENSE">MIT licensed</a></span>
+    <a href="https://github.com/Paritsingla7/hyprvalidate">github.com/Paritsingla7/hyprvalidate ↗</a>
+  </footer>
+
+</div>
+
+<script>
+  var tabs = [
+    { btn: document.getElementById('tab-pipx'), panel: document.getElementById('panel-pipx') },
+    { btn: document.getElementById('tab-git'), panel: document.getElementById('panel-git') }
+  ];
+  tabs.forEach(function (t) {
+    t.btn.addEventListener('click', function () {
+      tabs.forEach(function (o) {
+        o.btn.setAttribute('aria-selected', o === t ? 'true' : 'false');
+        o.panel.hidden = o !== t;
+      });
+    });
+  });
+
+  document.querySelectorAll('.copybtn').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var text = document.getElementById(b.getAttribute('data-copy')).textContent;
+      navigator.clipboard && navigator.clipboard.writeText(text);
+      var orig = b.textContent;
+      b.textContent = 'copied';
+      setTimeout(function () { b.textContent = orig; }, 1200);
+    });
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
+<script type="module" src="demo-ui.js"></script>
+</body>
+</html>
