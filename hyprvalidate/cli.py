@@ -23,6 +23,7 @@ import sys
 from pathlib import Path
 
 from hyprvalidate.luaast import reader, luac_gate
+from hyprvalidate.luaast.luac_gate import LuacNotFound
 from hyprvalidate.hyprlang import parser as hyprlang_parser
 from hyprvalidate.converter import mapper
 from hyprvalidate.schema.extractor import load_schema
@@ -243,13 +244,23 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "check":
-        exit_code, lines = check_files(args.files, args.stub)
+        try:
+            exit_code, lines = check_files(args.files, args.stub)
+        except LuacNotFound as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
         for line in lines:
             print(line)
         return exit_code
 
     if args.command == "convert":
-        exit_code, lines = convert_file(args.file, args.stub, args.output, args.split)
+        try:
+            exit_code, lines = convert_file(
+                args.file, args.stub, args.output, args.split
+            )
+        except LuacNotFound as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
         for line in lines:
             print(line)
         return exit_code
