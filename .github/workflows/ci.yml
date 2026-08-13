@@ -61,11 +61,20 @@ jobs:
         run: |
           # Exit 1 is expected: the fixture contains a deliberately
           # ambiguous value the validator flags. Exit 2 would be a real bug.
+          # `|| code=$?` is required - the runner uses `bash -e`, so a
+          # non-zero exit would otherwise abort the step before we can
+          # inspect it.
+          code=0
           hyprvalidate convert tests/fixtures/hyprland.conf \
-            --split /tmp/out --stub schema.json; test $? -le 1
+            --split /tmp/out --stub schema.json || code=$?
+          test "$code" -le 1
+
           test -f /tmp/out/hyprland.lua
           test -f /tmp/out/keybinds.lua
-          hyprvalidate check /tmp/out --stub schema.json; test $? -le 1
+
+          code=0
+          hyprvalidate check /tmp/out --stub schema.json || code=$?
+          test "$code" -le 1
 
   site-bundle-in-sync:
     runs-on: ubuntu-latest
