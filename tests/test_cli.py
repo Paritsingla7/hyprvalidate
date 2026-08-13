@@ -243,3 +243,25 @@ if __name__ == "__main__":
                 fn()
             print(f"ok  {name}")
     print("all tests passed")
+
+
+def test_missing_luac_gives_a_clean_error_not_a_traceback(tmp_path, monkeypatch):
+    """A user on a distro without lua installed should get an actionable
+    message and exit 2, not a raw Python traceback. Found by CI."""
+    from hyprvalidate import cli
+
+    src = tmp_path / "in.conf"
+    src.write_text("bind = SUPER, Q, killactive,\n")
+
+    def _boom(*args, **kwargs):
+        raise cli.LuacNotFound("luac not found on PATH")
+
+    monkeypatch.setattr(cli.luac_gate, "check_source", _boom)
+    monkeypatch.setattr(cli.luac_gate, "check_file", _boom)
+
+    code = cli.main(["convert", str(src), "--stub", SCHEMA_PATH])
+    assert code == 2
+
+    lua_file = tmp_path / "x.lua"
+    lua_file.write_text(VALID_SNIPPET)
+    assert cli.main(["check", str(lua_file), "--stub", SCHEMA_PATH]) == 2

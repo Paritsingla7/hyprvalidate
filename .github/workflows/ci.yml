@@ -39,6 +39,10 @@ jobs:
         with:
           python-version: "3.12"
 
+      # The converter runs the luac -p gate on its own output.
+      - name: Install lua
+        run: sudo apt-get update && sudo apt-get install -y lua5.4
+
       # Guards the exact regression that broke `pipx install` once already:
       # adding a top-level directory made setuptools refuse to build.
       - name: Build wheel and sdist
@@ -55,10 +59,13 @@ jobs:
 
       - name: Convert and check a real config end to end
         run: |
+          # Exit 1 is expected: the fixture contains a deliberately
+          # ambiguous value the validator flags. Exit 2 would be a real bug.
           hyprvalidate convert tests/fixtures/hyprland.conf \
-            --split /tmp/out --stub schema.json || true
+            --split /tmp/out --stub schema.json; test $? -le 1
           test -f /tmp/out/hyprland.lua
           test -f /tmp/out/keybinds.lua
+          hyprvalidate check /tmp/out --stub schema.json; test $? -le 1
 
   site-bundle-in-sync:
     runs-on: ubuntu-latest
