@@ -32,8 +32,7 @@ const tabsEl = document.getElementById("demo-tabs");
 const bodyEl = document.getElementById("demo-body");
 
 textarea.value = SAMPLE;
-runBtn.disabled = true;
-statusEl.textContent = "loading python runtime…";
+statusEl.textContent = "";
 
 let currentFiles = null;
 let currentActive = null;
@@ -118,8 +117,10 @@ function renderResult(result) {
 
 async function runNow() {
   runBtn.disabled = true;
-  setStatus("converting…");
   try {
+    // First click pays for the runtime download; later clicks are instant.
+    await loadDemo(setStatus);
+    setStatus("converting…");
     const result = await runConvert(textarea.value);
     renderResult(result);
     setStatus("done");
@@ -130,12 +131,3 @@ async function runNow() {
 }
 
 runBtn.addEventListener("click", runNow);
-
-loadDemo(setStatus)
-  .then(() => {
-    setStatus("ready");
-    runBtn.disabled = false;
-  })
-  .catch((err) => {
-    setStatus("failed to load: " + err.message, true);
-  });
