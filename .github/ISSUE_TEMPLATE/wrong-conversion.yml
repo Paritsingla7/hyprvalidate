@@ -1,0 +1,51 @@
+name: Wrong conversion
+description: hyprvalidate converted something incorrectly, or flagged something that is actually valid
+labels: ["conversion-bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the most useful kind of report for this project — the whole
+        job is being right about Hyprland's API. A single `bind` line is a
+        perfect report; it does not need to be your whole config.
+
+  - type: textarea
+    id: input
+    attributes:
+      label: Input (hyprlang)
+      description: The smallest snippet that reproduces it.
+      render: ini
+      placeholder: bind = SUPER, Q, killactive,
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What hyprvalidate produced
+      render: lua
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: If you know the correct Lua, great. If not, describe what went wrong.
+    validations:
+      required: true
+
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      placeholder: "hyprvalidate 0.1.0, Hyprland 0.56.2"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: todo-check
+    attributes:
+      label: Was it a TODO comment?
+      options:
+        - label: The output contained a `-- TODO(hyprvalidate convert):` comment, and I think this case is confidently convertible

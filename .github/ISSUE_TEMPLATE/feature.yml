@@ -1,0 +1,25 @@
+name: Feature request
+description: Something hyprvalidate should be able to do
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Known gaps are listed under **Limitations** in the README — plugin
+        blocks, `source =`, `animation`/`bezier` directives, and `--fix` mode
+        are already known and don't need a new issue unless you want to
+        discuss the approach.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: The underlying problem, not just the proposed solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would it look like
+      description: A command, a flag, an output shape.

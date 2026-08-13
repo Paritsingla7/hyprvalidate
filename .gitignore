@@ -8,3 +8,9 @@ __pycache__/
 # Each has its own .git - excluded so they don't get pulled in as embedded
 # repos / gitlinks. Local-only, not part of this project's shipped history.
 reference-tools/
+
+# Local-only working notes, not part of the shipped project.
+DECISIONS.md
+LAUNCH_TEMPLATES.md
+build/
+dist/

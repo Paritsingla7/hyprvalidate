@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Not found — hyprvalidate</title>
+<meta name="robots" content="noindex" />
+<style>
+  :root {
+    --bg: #eef2f5; --ink: #0b1622; --ink-soft: #3d4f5f; --accent: #0e8fa3;
+    --line-strong: #9fb0bb;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+    --sans: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0b1622; --ink: #dce8f2; --ink-soft: #8fa6bd; --accent: #5ec8d8; --line-strong: #33506b; }
+  }
+  :root[data-theme="dark"] { --bg: #0b1622; --ink: #dce8f2; --ink-soft: #8fa6bd; --accent: #5ec8d8; --line-strong: #33506b; }
+  :root[data-theme="light"] { --bg: #eef2f5; --ink: #0b1622; --ink-soft: #3d4f5f; --accent: #0e8fa3; --line-strong: #9fb0bb; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); display: flex; align-items: center; justify-content: center;
+    padding: 32px;
+  }
+  main { max-width: 44ch; }
+  .code { font-family: var(--mono); font-size: 13px; color: var(--accent); letter-spacing: 0.14em; text-transform: uppercase; margin: 0 0 14px; }
+  h1 { font-family: var(--mono); font-size: 28px; font-weight: 600; margin: 0 0 16px; }
+  p { color: var(--ink-soft); line-height: 1.65; margin: 0 0 28px; }
+  a.btn {
+    font-family: var(--mono); font-size: 14px; padding: 11px 18px; border-radius: 3px;
+    text-decoration: none; border: 1px solid var(--line-strong); color: var(--ink);
+    display: inline-block;
+  }
+  a.btn:hover { border-color: var(--accent); color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <p class="code">404</p>
+  <h1>No such page.</h1>
+  <p>That page doesn't exist. The converter and validator both live on the front page.</p>
+  <a class="btn" href="/hyprvalidate/">← hyprvalidate</a>
+</main>
+</body>
+</html>

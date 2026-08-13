@@ -1,0 +1,11 @@
+-- ponytail: BIGGEST unresolved gap in this whole migration.
+-- `source = /home/user/.config/hypr/noctalia/noctalia-colors.conf` has no
+-- Lua equivalent - require() only loads .lua files, not hyprlang .conf files.
+-- That file isn't in this folder so its contents weren't migrated here.
+-- Options:
+--   1. get noctalia-shell to emit a .lua variant (check its repo/issues), or
+--   2. hand-convert its contents into an hl.config({...}) call in this file
+--      (paste the .conf content in and I'll do the conversion), or
+--   3. keep hyprland.conf as a fallback - not viable once hyprland.lua
+--      exists, it takes over entirely, no partial mixing of the two.
+-- source = /home/user/.config/hypr/noctalia/noctalia-colors.conf

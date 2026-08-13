@@ -1,0 +1,32 @@
+# Maintainer: Paritsingla7 <https://github.com/Paritsingla7>
+pkgname=hyprvalidate
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Convert and validate Hyprland Lua configs against Hyprland's real API schema"
+arch=('any')
+url="https://github.com/Paritsingla7/hyprvalidate"
+license=('MIT')
+depends=('python' 'python-luaparser' 'lua')
+makedepends=('python-build' 'python-installer' 'python-wheel' 'python-setuptools')
+checkdepends=('python-pytest')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')  # replace with the real checksum via `updpkgsums`
+
+build() {
+  cd "$pkgname-$pkgver"
+  python -m build --wheel --no-isolation
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  # The suite falls back to the committed schema.json, so it does not
+  # require Hyprland to be installed in the build chroot.
+  python -m pytest tests/ -q
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  python -m installer --destdir="$pkgdir" dist/*.whl
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}

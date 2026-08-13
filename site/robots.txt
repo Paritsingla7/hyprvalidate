@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://paritsingla7.github.io/hyprvalidate/sitemap.xml

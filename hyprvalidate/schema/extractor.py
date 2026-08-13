@@ -140,6 +140,21 @@ def extract_file(path: str | Path) -> Schema:
     return extract(Path(path).read_text())
 
 
+def load_schema(path: str | Path) -> Schema:
+    """Load a schema from either Hyprland's `.lua` stub or a `.json`
+    snapshot produced by `Schema.to_json()`.
+
+    The JSON path exists so a config can be validated on a machine that
+    doesn't have Hyprland installed at all - CI for a dotfiles repo, a
+    container, or the browser demo. Dispatch is on the file extension,
+    since the two formats are unambiguous.
+    """
+    p = Path(path)
+    if p.suffix == ".json":
+        return Schema.from_json(p.read_text())
+    return extract_file(p)
+
+
 def main() -> None:
     import argparse
 

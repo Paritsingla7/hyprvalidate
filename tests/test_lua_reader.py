@@ -8,12 +8,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+FIXTURES = Path(__file__).parent / "fixtures"
+# Prefer the live installed stub; fall back to the committed snapshot so the
+# suite runs in CI and on machines without Hyprland installed.
+_LIVE_STUB = Path("/usr/share/hypr/stubs/hl.meta.lua")
+SCHEMA_PATH = str(_LIVE_STUB if _LIVE_STUB.is_file() else Path(__file__).parent.parent / "schema.json")
+
 from luaparser.astnodes import Call, Method, Fornum, Function, AnonymousFunction
 
 from hyprvalidate.luaast import reader
 
 REPO_ROOT = Path(__file__).parent.parent
-REAL_KEYBINDS = REPO_ROOT.parent / "configs" / "hyprland-lua" / "keybinds.lua"
+REAL_KEYBINDS = FIXTURES / "hyprland-lua" / "keybinds.lua"
 
 
 def test_parses_a_simple_config():
