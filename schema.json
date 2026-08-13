@@ -432,7 +432,7 @@
       "fields": {
         "animation": "fun(...): any",
         "bind": "fun(keys: string, dispatcher: HL.Dispatcher|function, opts?: HL.BindOptions): HL.Keybind",
-        "clear_crashed_lockscreen": "fun(...): any",
+        "clear_crashed_lockscreen": "fun(): nil",
         "config": "fun(config: HL.ConfigOpt): nil",
         "curve": "fun(...): any",
         "define_submap": "fun(name: string, reset_or_fn: string|function, fn?: function): nil",
@@ -441,7 +441,7 @@
         "dsp": "HL.DspNamespace",
         "env": "fun(...): any",
         "exec_cmd": "fun(cmd: string, rules?: table<string, string|number|boolean>): nil",
-        "exec_scheduled_prop_refresh_immediately": "fun(...): any",
+        "exec_scheduled_prop_refresh_immediately": "fun(): nil",
         "gesture": "fun(spec: HL.GestureSpec): nil",
         "get_active_monitor": "fun(): HL.Monitor|nil",
         "get_active_special_workspace": "fun(monitor?: HL.MonitorSelector): HL.Workspace|nil",
@@ -453,7 +453,7 @@
         "get_last_window": "fun(): HL.Window|nil",
         "get_last_workspace": "fun(monitor?: HL.MonitorSelector): HL.Workspace|nil",
         "get_layers": "fun(filters?: HL.LayerQueryFilter): HL.LayerSurface[]",
-        "get_loaded_plugins": "fun(...): any",
+        "get_loaded_plugins": "fun(): HL.Plugin[]",
         "get_monitor": "fun(selector: HL.MonitorSelector): HL.Monitor|nil",
         "get_monitor_at": "fun(x: number|HL.Vec2, y?: number): HL.Monitor|nil",
         "get_monitor_at_cursor": "fun(): HL.Monitor|nil",
@@ -464,7 +464,7 @@
         "get_workspace": "fun(selector: HL.WorkspaceSelector): HL.Workspace|nil",
         "get_workspace_windows": "fun(workspace: HL.WorkspaceSelector): HL.Window[]",
         "get_workspaces": "fun(): HL.Workspace[]",
-        "is_key_down": "fun(...): any",
+        "is_key_down": "fun(key: number|string): boolean",
         "layer_rule": "fun(spec: HL.LayerRuleSpec): HL.LayerRule",
         "layout": "HL.LayoutNamespace",
         "monitor": "fun(spec: HL.MonitorSpec): nil",
@@ -473,8 +473,8 @@
         "permission": "fun(spec: HL.PermissionSpec): nil",
         "plugin": "HL.PluginNamespace",
         "timer": "fun(callback: function, opts: HL.TimerOptions): HL.Timer",
-        "unbind": "fun(...): any",
-        "version": "fun(...): any",
+        "unbind": "fun(key: string): nil",
+        "version": "fun(): string",
         "window_rule": "fun(spec: HL.WindowRuleSpec): HL.WindowRule",
         "workspace_rule": "fun(spec: HL.WorkspaceRuleSpec): HL.WorkspaceRule"
       },
@@ -1840,6 +1840,15 @@
         "type": "string"
       },
       "name": "HL.PermissionSpec"
+    },
+    "HL.Plugin": {
+      "fields": {
+        "author": "string",
+        "description": "string",
+        "name": "string",
+        "version": "string"
+      },
+      "name": "HL.Plugin"
     },
     "HL.PluginNamespace": {
       "fields": {

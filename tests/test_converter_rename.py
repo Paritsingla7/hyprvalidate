@@ -11,7 +11,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from hyprvalidate.schema.extractor import extract_file
+FIXTURES = Path(__file__).parent / "fixtures"
+# Prefer the live installed stub; fall back to the committed snapshot so the
+# suite runs in CI and on machines without Hyprland installed.
+_LIVE_STUB = Path("/usr/share/hypr/stubs/hl.meta.lua")
+SCHEMA_PATH = str(_LIVE_STUB if _LIVE_STUB.is_file() else Path(__file__).parent.parent / "schema.json")
+
+from hyprvalidate.schema.extractor import load_schema
 from hyprvalidate.checker import resolve_symbol
 from hyprvalidate.converter.rename import (
     DISPATCHER_RENAME,
@@ -19,12 +25,11 @@ from hyprvalidate.converter.rename import (
     SHAPE_CHANGING_BIND_FLAGS,
 )
 
-STUB_PATH = "/usr/share/hypr/stubs/hl.meta.lua"
 
 
 def _schema():
-    assert Path(STUB_PATH).is_file(), f"expected the installed stub at {STUB_PATH}"
-    return extract_file(STUB_PATH)
+    assert Path(SCHEMA_PATH).is_file(), f"expected the installed stub at {SCHEMA_PATH}"
+    return load_schema(SCHEMA_PATH)
 
 
 def test_every_dispatcher_rename_target_resolves_against_the_schema():
