@@ -84,3 +84,5 @@ stub, so CI catches this.
 
 Run the tests, keep the diff scoped to one thing, and say in the description
 what you verified rather than just what you changed.
+
+<!-- test: simulated contributor PR to verify branch protection + CI gate, will be reverted -->
