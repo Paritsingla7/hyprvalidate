@@ -1,4 +1,4 @@
-"""Schema-typed value coercion (docs/CONVERTER_PLAN.md task 7.2).
+"""Schema-typed value coercion.
 
 hyprlang values are always raw strings; the target schema says what type
 they should become. This is the fix for the exact bug 3 of 4 competitor
@@ -10,7 +10,7 @@ Only recognizes hyprlang's own literal boolean spellings ("true"/"false",
 case-insensitive) - not "yes"/"on"/"1", which aren't confirmed hyprlang
 literals and would be a guess. A value that doesn't confidently match any
 scalar alternative in the schema's type expression is passed through as a
-string unchanged; task 7.4 decides what to do with low-confidence cases,
+string unchanged; todo.py decides what to do with low-confidence cases,
 this module never guesses to force a coercion.
 """
 from __future__ import annotations

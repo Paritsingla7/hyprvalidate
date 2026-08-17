@@ -1,6 +1,6 @@
-"""Tests for the Lua reader (docs/PLAN.md row 3): parsing + the two
-schema-agnostic utilities (dotted-name resolution, literal resolution).
-Deliberately does not test any schema cross-referencing - that's row 4.
+"""Tests for the Lua reader: parsing + the two schema-agnostic utilities
+(dotted-name resolution, literal resolution). Deliberately does not test
+any schema cross-referencing - that's the checker's job.
 """
 
 import sys

@@ -1,4 +1,4 @@
-"""Tests for the hyprlang lexer (docs/CONVERTER_PLAN.md task 5.1)."""
+"""Tests for the hyprlang lexer."""
 
 import sys
 from pathlib import Path

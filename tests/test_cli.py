@@ -1,6 +1,5 @@
-"""Tests for the CLI (docs/PLAN.md row 8): `check` validates an existing
-.lua config; `convert` (docs/CONVERTER_PLAN.md task 7.5) turns an old
-hyprlang .conf into Lua.
+"""Tests for the CLI: `check` validates an existing .lua config; `convert`
+turns an old hyprlang .conf into Lua.
 
 Tests both the pure orchestration functions directly (fast, no subprocess)
 and the actual installed console-script entry point end to end (proves the

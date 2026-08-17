@@ -1,4 +1,4 @@
-"""Tests for modular --split conversion (docs/PLAN.md row 11, task 8.1).
+"""Tests for modular --split conversion.
 
 The load-bearing tests here are the two invariants that make bucketing
 statements into separate files safe at all:

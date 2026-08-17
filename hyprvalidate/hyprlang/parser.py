@@ -1,4 +1,4 @@
-"""Parser/AST for the old hyprlang .conf format (docs/PLAN.md row 5).
+"""Parser/AST for the old hyprlang .conf format.
 
 Builds a small AST from the lexer's token stream: blocks, flat directives,
 $variable assignment/substitution, and a single unified WindowRule node for

@@ -1,4 +1,4 @@
-"""Tests for schema-typed value coercion (docs/CONVERTER_PLAN.md task 7.2)."""
+"""Tests for schema-typed value coercion."""
 
 import sys
 from pathlib import Path

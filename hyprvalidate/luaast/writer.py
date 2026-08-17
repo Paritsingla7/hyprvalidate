@@ -1,4 +1,4 @@
-"""Lua AST builder helpers (docs/PLAN.md row 6).
+"""Lua AST builder helpers.
 
 `luaparser` writes Lua too (`ast.to_lua_source`), so this doesn't need a
 custom Lua AST - it's a thin layer over `luaparser.astnodes` that gets one

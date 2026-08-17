@@ -1,4 +1,4 @@
-"""Tests for the luac gate (docs/PLAN.md row 2).
+"""Tests for the luac gate.
 
 Uses inline fixtures, not reference-tools/ (that dir is gitignored -
 local-only research clones, not something this suite can depend on).

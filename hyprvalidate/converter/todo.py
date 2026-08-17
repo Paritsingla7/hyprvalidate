@@ -1,4 +1,4 @@
-"""Low-confidence TODO emission (docs/CONVERTER_PLAN.md task 7.4).
+"""Low-confidence TODO emission.
 
 Anything the mapper can't resolve with full confidence - an old dispatcher
 name not in DISPATCHER_RENAME, a bind flag that changes the bind's shape

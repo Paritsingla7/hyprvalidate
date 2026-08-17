@@ -1,4 +1,4 @@
-"""Tests for the hyprlang parser/AST (docs/CONVERTER_PLAN.md task 5.2)."""
+"""Tests for the hyprlang parser/AST."""
 
 import sys
 from pathlib import Path

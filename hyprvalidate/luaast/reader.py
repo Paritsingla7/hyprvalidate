@@ -11,7 +11,7 @@ piece of syntax say", not "is that allowed".
 Built on `luaparser` (MIT, ANTLR-generated Lua grammar) rather than a
 hand-rolled parser - verified against this project's own real config
 (hyprland-lua/keybinds.lua: 101 Call/Method nodes, lambda-bodied binds,
-a Fornum loop) before adopting it. See docs/PLAN.md row 3.
+a Fornum loop) before adopting it.
 """
 
 from __future__ import annotations

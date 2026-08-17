@@ -1,9 +1,9 @@
-"""Dispatcher/bind-flag rename tables (docs/CONVERTER_PLAN.md task 7.3).
+"""Dispatcher/bind-flag rename tables.
 
 hyprlang's old dispatcher names and single-letter bind flags don't exist in
-the new Lua schema at all - there's nothing to derive this from, unlike
-tasks 7.1/7.2. These are hand-curated tables, verified against real
-evidence rather than guessed:
+the new Lua schema at all - there's nothing to derive this from, unlike the
+block-dispatch and value-coercion logic elsewhere in this package. These
+are hand-curated tables, verified against real evidence rather than guessed:
 
   - DISPATCHER_RENAME was built by reading Hyprland's actual current
     dispatcher implementation
@@ -25,8 +25,8 @@ evidence rather than guessed:
         installed stub at all, despite the *current* Lua wiki's own
         examples using `{ mouse = true }` - a real docs/schema
         discrepancy, not something to paper over by inventing a field.
-        This project hit the same trap once before (docs/PLAN.md's
-        `mouse`->`drag` history) - `g` ("drag") is the flag that maps to
+        This project hit the same trap once before, in its own earlier
+        `mouse`->`drag` bug - `g` ("drag") is the flag that maps to
         the real `drag` field; `m` is deliberately left out here rather
         than mapped to a field that doesn't exist.
 
@@ -42,8 +42,8 @@ letter->field table can't represent them honestly:
   - `m` ("mouse") - see above; the real replacement is the `g`/`drag`
     field plus using `hl.dsp.window.drag()`/`resize()` as the dispatcher,
     not a flag rename.
-These surface through task 7.4's low-confidence TODO emission instead of a
-silent (and wrong) guess.
+These surface through this package's low-confidence TODO emission (see
+todo.py) instead of a silent (and wrong) guess.
 """
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ BIND_FLAG_RENAME: dict[str, str] = {
 
 # Old flags that change the bind call's shape rather than toggling a field -
 # see module docstring. Kept here (not just absent from the table above) so
-# task 7.4 can recognize "this flag is known but unsupported" and say so,
+# todo.py can recognize "this flag is known but unsupported" and say so,
 # instead of silently treating it as "unknown flag, guess something".
 SHAPE_CHANGING_BIND_FLAGS: dict[str, str] = {
     "d": "has description - inserts description as a positional argument, not a flag",

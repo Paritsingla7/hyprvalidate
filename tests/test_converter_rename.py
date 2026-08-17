@@ -1,4 +1,4 @@
-"""Tests for the hand-curated rename tables (docs/CONVERTER_PLAN.md task 7.3).
+"""Tests for the hand-curated rename tables.
 
 The whole point of these tests: every entry is checked against the real
 schema, so a typo'd or wrong target fails immediately - the exact discipline
