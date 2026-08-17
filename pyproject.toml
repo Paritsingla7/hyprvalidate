@@ -1,6 +1,6 @@
 [project]
 name = "hyprvalidate"
-version = "0.1.0"
+version = "0.2.0"
 description = "Convert and validate Hyprland Lua configs against Hyprland's real API schema"
 readme = "README.md"
 requires-python = ">=3.10"

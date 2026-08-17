@@ -1,0 +1,45 @@
+name: Publish to PyPI
+
+# Runs when a version tag is pushed (e.g. v0.2.0). Uses PyPI Trusted
+# Publishing (OIDC) - no API token stored in repo secrets. The one-time
+# setup this depends on is on PyPI's side, not here: register a "pending
+# publisher" for this exact repo/workflow/environment at
+# https://pypi.org/manage/project/hyprvalidate/settings/publishing/
+# (or, before the project exists on PyPI yet, via "Publish" ->
+# "trusted publisher" flow at https://pypi.org/manage/account/publishing/).
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - run: python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # required for OIDC trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
