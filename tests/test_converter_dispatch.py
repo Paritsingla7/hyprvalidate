@@ -1,4 +1,4 @@
-"""Tests for schema-derived block-type dispatch (docs/CONVERTER_PLAN.md task 7.1)."""
+"""Tests for schema-derived block-type dispatch."""
 
 import sys
 from pathlib import Path

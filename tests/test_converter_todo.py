@@ -1,4 +1,4 @@
-"""Tests for low-confidence TODO emission (docs/CONVERTER_PLAN.md task 7.4)."""
+"""Tests for low-confidence TODO emission."""
 
 import sys
 from pathlib import Path

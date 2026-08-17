@@ -1,4 +1,4 @@
-"""Tests for the Lua AST builder helpers (docs/CONVERTER_PLAN.md task 6.1)."""
+"""Tests for the Lua AST builder helpers."""
 
 import sys
 from pathlib import Path
@@ -13,8 +13,8 @@ from hyprvalidate.luaast.writer import hlcall, chunk, to_source, luatable, membe
 
 def _roundtrip(*statements):
     """Build, render, re-parse, return the reparsed tree - the actual
-    round-trip oracle: does what we wrote mean what we intended, per row 3's
-    own reader, not just "did it not crash"."""
+    round-trip oracle: does what we wrote mean what we intended, per the
+    Lua reader's own parsing, not just "did it not crash"."""
     src = to_source(chunk(list(statements)))
     return src, reader.parse(src)
 
@@ -51,9 +51,9 @@ def test_bind_shaped_call_round_trips():
 
 def test_member_chain_builds_dotted_access():
     # A bare dotted-access chain isn't a valid standalone Lua statement -
-    # assign it, then confirm row 3's own dotted-name resolver agrees with
-    # what was intended, closing the loop through the reader rather than
-    # just eyeballing rendered text.
+    # assign it, then confirm the reader's own dotted-name resolver agrees
+    # with what was intended, closing the loop through the reader rather
+    # than just eyeballing rendered text.
     node = member("hl", "dsp", "window", "close")
     assign = Assign(targets=[Name(identifier="x")], values=[node])
     src, tree = _roundtrip(assign)

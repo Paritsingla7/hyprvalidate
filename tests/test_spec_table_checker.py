@@ -1,4 +1,4 @@
-"""Tests for the spec-table field checker (docs/PLAN.md row 10).
+"""Tests for the spec-table field checker.
 
 Motivated by a real gap found by re-examining test evidence: hl.monitor's
 spec-table contents were never checked, only its existence and arity.

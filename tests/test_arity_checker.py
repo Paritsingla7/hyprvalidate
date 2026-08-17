@@ -1,4 +1,4 @@
-"""Tests for the call-shape (arity) checker (docs/PLAN.md row 9).
+"""Tests for the call-shape (arity) checker.
 
 Motivated by a real gap found in this project: hl.monitor(nil, {...}) in a
 GPT-fabricated test config resolved as a valid symbol (it is) but was never

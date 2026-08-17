@@ -1,8 +1,8 @@
-"""Row 4 in docs/PLAN.md: the actual Validator logic. Walks a parsed Lua
-file (via hyprvalidate.luaast.reader) and cross-references every `hl.*`
-symbol reference and every `hl.config({...})` key/value against the schema
-(via hyprvalidate.schema.extractor) — the one thing none of the four
-existing hyprlang->lua converters do (see docs/PLAN.md "Why").
+"""The actual Validator logic. Walks a parsed Lua file (via
+hyprvalidate.luaast.reader) and cross-references every `hl.*` symbol
+reference and every `hl.config({...})` key/value against the schema (via
+hyprvalidate.schema.extractor) — the one thing none of the four existing
+hyprlang->lua converters do (see docs/COMPARISON.md).
 
 Scope, stated explicitly rather than left implicit:
   - Symbol resolution walks HL.API -> namespace classes -> leaf `fun(...)`
@@ -10,7 +10,7 @@ Scope, stated explicitly rather than left implicit:
     field is accepted unconditionally - HL.PluginNamespace has a dynamic
     `[string] any` index signature for plugin-registered members (e.g.
     `hl.plugin.dynamic_cursors`) that isn't literal data the extractor can
-    enumerate. See extractor.py's bracket-field regex and docs/PLAN.md.
+    enumerate. See extractor.py's bracket-field regex.
   - Config-key/value checking only validates *scalar* values (string/
     number/boolean/nil) against the schema's type expression. A key whose
     schema type includes a table-shaped alternative (contains "{" or names
@@ -51,15 +51,15 @@ Scope, stated explicitly rather than left implicit:
     re-verifying every config section against a hierarchy that hasn't been
     checked yet, for no found benefit. `hl.config` keeps using its already
     -tested path; this is a second, narrower mechanism for everything else.
-    Also excludes `hl.window_rule` specifically - found by this row's own
+    Also excludes `hl.window_rule` specifically - found by this module's own
     test suite flooding false positives against the real config:
     `HL.WindowRuleSpec` only types 3 universal fields (enabled/match/name),
     unlike its siblings `HL.LayerRuleSpec` (13 fields) and
     `HL.WorkspaceRuleSpec` (17 fields) which are fully typed and DO get
     checked. Per-rule-type window fields (move/float/workspace/
     suppress_event/no_focus) are dynamically dispatched and deliberately
-    absent from the stub - the same fact row 4 already noted, rediscovered
-    here.
+    absent from the stub - the same fact noted above about `hl.plugin.*`,
+    rediscovered here for window rules specifically.
 """
 
 from __future__ import annotations
@@ -338,9 +338,9 @@ def _check_spec_table(
     schema: Schema, table: Table, class_name: str, line: int | None
 ) -> list[Finding]:
     """Check a table's keys/values against a schema class's own fields
-    (e.g. HL.MonitorSpec) - the row-10 mechanism, distinct from
-    _walk_config_table's dotted-path check (row 4, hl.config only). See
-    module docstring for why these stay separate rather than unified."""
+    (e.g. HL.MonitorSpec) - the spec-table mechanism, distinct from
+    _walk_config_table's dotted-path check (hl.config only). See module
+    docstring for why these stay separate rather than unified."""
     findings: list[Finding] = []
     cls = schema.classes.get(class_name)
     if cls is None:
@@ -420,20 +420,20 @@ def check(schema: Schema, tree) -> list[Finding]:
                         f"{dotted}: expects at most {max_args} argument(s), got {n_args}",
                     ))
 
-                # Row 10: check spec-table arguments against their own
-                # schema class, for every function except hl.config (its
-                # own already-tested dotted-path mechanism, see module
+                # Check spec-table arguments against their own schema
+                # class, for every function except hl.config (its own
+                # already-tested dotted-path mechanism, see module
                 # docstring) and hl.window_rule specifically - found by
-                # this row's own test suite flooding false positives on
+                # this check's own test suite flooding false positives on
                 # the real config: HL.WindowRuleSpec only types 3
                 # universal fields (enabled/match/name), unlike its
                 # siblings HL.LayerRuleSpec (13 fields) and
                 # HL.WorkspaceRuleSpec (17 fields) which are fully typed.
                 # Per-rule-type fields (move/float/workspace/suppress_event/
                 # no_focus) are dynamically dispatched and deliberately not
-                # in the stub at all - same fact already noted in row 4's
-                # original scope notes, just re-discovered the hard way
-                # when generalizing.
+                # in the stub at all - the same fact already noted above
+                # about hl.plugin.*, re-discovered the hard way here when
+                # generalizing.
                 if dotted not in ("hl.config", "hl.window_rule"):
                     for idx, param in enumerate(sig.params):
                         if param.type_expr in schema.classes and idx < len(node.args):

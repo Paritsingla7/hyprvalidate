@@ -1,12 +1,14 @@
 <h1 align="center">hyprvalidate</h1>
 
 <p align="center">
-  <strong>Convert your old <code>hyprland.conf</code> to Lua — and validate any Hyprland Lua config —<br>
-  against Hyprland's real API schema instead of a hand-typed guess.</strong>
+  Migrate old Hyprland configs to Lua.<br>
+  Validate Lua configs against Hyprland's own API schema.
 </p>
 
 <p align="center">
-  <a href="https://paritsingla7.github.io/hyprvalidate/"><strong>Try it in your browser →</strong></a>
+  <a href="https://paritsingla7.github.io/hyprvalidate/"><strong>Try it online</strong></a> ·
+  <a href="#install"><strong>Install</strong></a> ·
+  <a href="docs/COMPARISON.md"><strong>Why it's different</strong></a>
 </p>
 
 <p align="center">
@@ -210,9 +212,6 @@ what's on disk is real. Neither has a hardcoded API table.
 | `checker.py` | the validator: symbols, config keys, types, arity, spec fields |
 | `cli.py` | `convert` / `check` |
 
-Design docs: [`docs/PLAN.md`](docs/PLAN.md) (what and why, component by
-component) and [`docs/CONVERTER_PLAN.md`](docs/CONVERTER_PLAN.md).
-
 ## Contributing
 
 Bug reports about wrong conversions are especially useful — attach the
@@ -230,19 +229,16 @@ committed `schema.json`).
 
 ## Acknowledgements
 
-- **[Hyprland](https://github.com/hyprwm/Hyprland)** for shipping a
-  machine-readable API stub in the first place. Without
-  `meta/generateLuaStubs.py` there is no schema to read and no project here.
-- **[hypr2lua](https://github.com/Phillezi/hypr2lua)** for getting to the
-  schema-driven idea first.
-- **[hyprconf2lua](https://github.com/Prateek-squadron/hyprconf2lua)** whose
-  MIT-licensed hyprlang lexer this project adapted (attributed in
-  `hyprvalidate/hyprlang/lexer.py`) instead of writing a worse one.
-- **hyprlang2lua** and
-  **[hypr-migrate](https://github.com/loeclos/hypr-migrate)** for output worth
-  studying — reading all four is what made the actual problem visible.
-- **[luaparser](https://pypi.org/project/luaparser/)** (MIT) for the Lua
-  grammar.
+- **[Hyprland](https://github.com/hyprwm/Hyprland)** — ships the
+  machine-readable API stub this whole project reads; no schema, no project.
+- **[hypr2lua](https://github.com/Phillezi/hypr2lua)** — reached the
+  schema-driven idea first (see "Why this exists" above).
+- **[hyprconf2lua](https://github.com/Prateek-squadron/hyprconf2lua)** —
+  its MIT-licensed hyprlang lexer is adapted here (attributed in
+  `hyprvalidate/hyprlang/lexer.py`) rather than rewritten from scratch.
+- **hyprlang2lua** and **[hypr-migrate](https://github.com/loeclos/hypr-migrate)**
+  — output worth studying; reading all four is what made the problem visible.
+- **[luaparser](https://pypi.org/project/luaparser/)** (MIT) — the Lua grammar.
 
 ## License
 

@@ -1,5 +1,5 @@
-"""Tests for the schema-driven checker (docs/PLAN.md row 4) - the actual
-Validator logic. Uses the real schema extracted from the installed stub,
+"""Tests for the schema-driven checker - the actual Validator logic. Uses
+the real schema extracted from the installed stub,
 same as the extractor's own tests, so these are checked against ground
 truth, not a mock.
 """

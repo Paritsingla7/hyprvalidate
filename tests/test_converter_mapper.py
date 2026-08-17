@@ -1,5 +1,5 @@
-"""Tests for the schema-driven mapper (docs/CONVERTER_PLAN.md tasks 7.1-7.5
-assembled into hyprvalidate.converter.mapper.convert)."""
+"""Tests for the schema-driven mapper (hyprvalidate.converter.mapper.convert),
+which assembles dispatch, coercion, rename tables, and TODO emission."""
 
 import sys
 from pathlib import Path
@@ -162,8 +162,9 @@ def test_unrecognized_dispatcher_becomes_a_todo_not_a_guess():
 
 def test_uncoercible_value_gets_flagged_even_though_still_emitted():
     """The real config's own joke value: 'yes, please :)' isn't a valid
-    boolean - the converter must flag it (task 7.5's self-check spirit)
-    even though it still emits a best-effort value."""
+    boolean - the converter must flag it (matching the CLI's own
+    self-check on its output) even though it still emits a best-effort
+    value."""
     schema = _schema()
     hf = parse("animations {\n    enabled = yes, please :)\n}\n")
     out = convert(schema, hf)

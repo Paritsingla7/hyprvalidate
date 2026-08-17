@@ -1,8 +1,7 @@
-"""Schema-driven mapper: hyprlang AST -> Lua source (docs/PLAN.md row 7,
-docs/CONVERTER_PLAN.md tasks 7.1-7.5 assembled).
+"""Schema-driven mapper: hyprlang AST -> Lua source.
 
-Ties together dispatch.py (7.1), coerce.py (7.2), rename.py (7.3), and
-todo.py (7.4) into `convert(schema, hyprlang_file) -> str`.
+Ties together dispatch.py, coerce.py, rename.py, and todo.py into
+`convert(schema, hyprlang_file) -> str`.
 
 Scope, stated explicitly rather than left implicit: this maps the
 constructs the project's own real hyprland.conf actually uses (config
@@ -11,7 +10,7 @@ exit/submap/global dispatchers, window rules, source). Dispatcher and
 directive shapes not exercised by that file (e.g. `permission`, most
 `layerrule`/`workspace_rule` forms, `fullscreen` with an explicit mode) are
 not modeled here - anything the mapper doesn't recognize becomes a
-low-confidence TODO (task 7.4), never a guess.
+low-confidence TODO (see todo.py), never a guess.
 
 Two argument-shape facts came from reading Hyprland's actual current
 dispatcher implementation directly (LuaBindingsDispatchers.cpp), not
@@ -129,7 +128,7 @@ def _spec_block_module(block_name: str) -> str:
 
 
 def _coerce_or_note(type_expr: str, raw: str, notes: list[TodoNote], key_name: str, line: int | None):
-    """Wraps coerce_value with the same self-check task 7.5 requires of the
+    """Wraps coerce_value with the same self-check the CLI requires of the
     whole converter: if the raw value can't be confidently coerced AND a
     plain string wouldn't satisfy the schema type either, that's a real
     mismatch (e.g. the real config's own joke value,
@@ -378,7 +377,7 @@ def _convert_items(schema, hf: HyprlangFile) -> list[ConvertedItem]:
 
     for stmt in hf.statements:
         if isinstance(stmt, VariableAssign):
-            continue  # already inlined at parse time (row 5.2)
+            continue  # already inlined by the hyprlang parser
 
         if isinstance(stmt, WindowRule):
             items.append(ConvertedItem(_build_window_rule(stmt), None, M_WINDOWRULES, stmt.line))

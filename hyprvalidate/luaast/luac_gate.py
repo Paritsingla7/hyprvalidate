@@ -2,9 +2,9 @@
 converter skipped: does this file actually parse as Lua at all.
 
 `luac -p` alone would have caught 3 of the 4 competitor tools' fatal defects
-(see reference-tools/README.md and docs/PLAN.md). This runs first, before
-any schema-aware checking, so a syntactically broken file fails fast with a
-clear message instead of the checker tripping over malformed input.
+(see docs/COMPARISON.md). This runs first, before any schema-aware checking,
+so a syntactically broken file fails fast with a clear message instead of
+the checker tripping over malformed input.
 """
 
 from __future__ import annotations

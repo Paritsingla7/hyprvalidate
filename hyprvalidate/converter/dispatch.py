@@ -1,4 +1,4 @@
-"""Block-type dispatch (docs/CONVERTER_PLAN.md task 7.1).
+"""Block-type dispatch.
 
 Given a hyprlang block's name, decide whether it becomes a top-level
 `hl.<name>(spec)` call or flattens into `hl.config({...})`'s dotted-key
@@ -9,7 +9,7 @@ live means it can't go stale or go unwired.
 
 Only exact name matches are resolved here. A hyprlang directive whose old
 name doesn't literally match its HL.API counterpart (e.g. `layerrule` vs.
-`layer_rule`) is a rename, not a dispatch decision - that's task 7.3's
+`layer_rule`) is a rename, not a dispatch decision - that's rename.py's
 hand-curated, schema-checked table, not this module's job.
 """
 from __future__ import annotations

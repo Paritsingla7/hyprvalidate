@@ -1,6 +1,5 @@
-"""CLI (docs/PLAN.md row 8). `check` validates an existing .lua config;
-`convert` (docs/CONVERTER_PLAN.md task 7.5) turns an old hyprlang .conf
-into Lua using the schema-driven mapper (rows 5-7).
+"""CLI. `check` validates an existing .lua config; `convert` turns an old
+hyprlang .conf into Lua using the schema-driven mapper.
 
 Exit codes, distinct so scripts/CI can tell "your file is broken" from
 "your file has schema issues" apart:

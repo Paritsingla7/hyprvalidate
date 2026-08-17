@@ -1,10 +1,11 @@
 """Lexer for the old hyprlang .conf format.
 
 Adapted from hyprconf2lua's lexer.py (MIT License, hyprconf2lua contributors,
-https://github.com — see reference-tools/hyprconf2lua/LICENSE), which already
-handles the format's grammar quirks correctly: backslash line continuation,
-`${...}` shell expansion (vs. a bare `$` for variable refs), and comment
-stripping. Adapted rather than reinvented per docs/PLAN.md row 5 / non-goals.
+https://github.com/Prateek-squadron/hyprconf2lua), which already handles the
+format's grammar quirks correctly: backslash line continuation, `${...}`
+shell expansion (vs. a bare `$` for variable refs), and comment stripping.
+Adapted rather than reinvented, rather than rewriting a hyprlang lexer from
+scratch when a correct MIT-licensed one already existed.
 """
 from __future__ import annotations
 
