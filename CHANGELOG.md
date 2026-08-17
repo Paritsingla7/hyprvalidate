@@ -2,6 +2,47 @@
 
 Notable changes. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.0] — 2026-08-17
+
+### Added
+
+- **Published to PyPI** via GitHub Actions Trusted Publishing —
+  `pipx install hyprvalidate` works without a `git+` URL from this release
+  onward.
+- **`--version` flag.**
+- **GitHub repo metadata**: description, topics, homepage; a ready
+  `packaging/PKGBUILD` for Arch/AUR.
+
+### Fixed
+
+- **`luac` missing from PATH raised a raw Python traceback** instead of an
+  actionable error. Now caught at the CLI boundary and reported as
+  `error: ...` with exit 2, consistent with every other failure path.
+- **`pip`/`pipx install` failed outright** ("Multiple top-level packages
+  discovered") once the project site landed at a top-level `site/`
+  directory — setuptools' package discovery is now pinned to
+  `hyprvalidate*`.
+- **The committed `schema.json` had silently drifted** from the live schema
+  (missing a class) — regenerated, and a test now fails if it drifts again.
+- **Every test fixture that referenced a path outside the repo** has been
+  vendored into `tests/fixtures/` — the suite now passes on a fresh clone
+  with no external dependencies, and runs with or without Hyprland
+  installed.
+
+### Removed
+
+- **`docs/PLAN.md` and `docs/CONVERTER_PLAN.md`** — these had become an
+  internal build log with stale, self-contradicting status and broken
+  references to files outside the repo. Deleted rather than fixed in place;
+  the reasoning they captured that's still relevant lives in
+  `docs/COMPARISON.md` and in-code docstrings.
+
+### Changed
+
+- README restructured: a scannable one-line summary and action row (Try it
+  online / Install / Why it's different) ahead of the badges, instead of a
+  single bold paragraph.
+
 ## [0.1.0] — 2026-08-11
 
 First public release.
