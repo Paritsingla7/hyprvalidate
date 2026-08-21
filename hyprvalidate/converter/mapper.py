@@ -290,7 +290,12 @@ def _flatten_config_block(schema, block: Block, prefix: str, notes: list[TodoNot
         _set_nested(result, d.key, value)
     for sub in block.blocks:
         sub_path = f"{prefix}.{sub.name}" if prefix else sub.name
-        result[sub.name] = _flatten_config_block(schema, sub, sub_path, notes)
+        sub_result = _flatten_config_block(schema, sub, sub_path, notes)
+        # A sub-block whose every key was TODO'd out contributes nothing but
+        # an empty table. The note already records what couldn't be
+        # converted, so don't also emit `touchpad = {}`.
+        if sub_result:
+            result[sub.name] = sub_result
     return result
 
 
@@ -445,8 +450,21 @@ def _convert_items(schema, hf: HyprlangFile) -> list[ConvertedItem]:
                 module = _spec_block_module(stmt.name)
             else:
                 inner = _flatten_config_block(schema, stmt, stmt.name, notes)
-                call = hlcall("hl.config", {stmt.name: inner})
                 module = _config_section_module(stmt.name)
+                if not inner:
+                    # Nothing survived conversion - either the source block
+                    # was empty, or every key in it was TODO'd out. Emitting
+                    # `hl.config({ <name> = {} })` sets nothing, and when the
+                    # block name itself is unresolvable (e.g. a per-device
+                    # `device:foo` block) it's output that fails our own
+                    # post-convert checker. Same call as the plugin case
+                    # above: keep the notes, drop the dead table.
+                    if notes:
+                        items.append(ConvertedItem(
+                            None, _combine_notes(notes), module, stmt.line
+                        ))
+                    continue
+                call = hlcall("hl.config", {stmt.name: inner})
             items.append(ConvertedItem(call, _combine_notes(notes), module, stmt.line))
             continue
 
