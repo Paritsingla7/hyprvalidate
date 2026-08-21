@@ -2,6 +2,21 @@
 
 Notable changes. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+
+- **`convert` emitted empty `hl.config({ <block> = {} })` tables** for blocks
+  whose every key was TODO'd out (or that were empty in the source). These
+  set nothing, and when the block name itself was unresolvable — e.g. a
+  per-device `device:epic-mouse-v1 { ... }` block, which Hyprland's own
+  default config ships as a commented example — the leftover table tripped
+  `convert`'s own post-convert validation, reporting an issue on a file the
+  converter had in fact handled exactly as designed. The explanatory
+  `-- TODO(hyprvalidate convert):` comment is unchanged; only the dead
+  table is gone. Found running the converter against a real config from
+  the wild.
+
 ## [0.2.0] — 2026-08-17
 
 ### Added

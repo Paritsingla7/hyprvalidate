@@ -209,6 +209,42 @@ def test_real_config_conversion_checker_findings_are_only_the_known_joke_value()
     assert "animations.enabled" in findings[0].message
 
 
+def test_fully_todod_block_emits_no_empty_config_table():
+    """A per-device block has an unresolvable name, so every key in it is
+    unknown and gets TODO'd. The leftover
+    `hl.config({ ["device:epic-mouse-v1"] = {} })` set nothing AND tripped
+    the converter's own post-convert checker - reporting an issue on a file
+    it had handled exactly as designed. Found converting a real config from
+    the wild; Hyprland's own default template ships this block as an
+    example, so it's widespread."""
+    schema = _schema()
+    hf = parse("device:epic-mouse-v1 {\n    sensitivity = -0.5\n}\n")
+    out = convert(schema, hf)
+    assert "hl.config" not in out
+    assert "TODO(hyprvalidate convert)" in out
+    assert "device:epic-mouse-v1" in out
+    # The point of the fix: the converter's own output validates clean.
+    assert checker.check(schema, reader.parse(out)) == []
+
+
+def test_empty_source_block_emits_nothing():
+    """`misc {}` with only a comment inside sets nothing - don't emit a
+    no-op table for it either."""
+    schema = _schema()
+    out = convert(schema, parse("misc {\n    # just a comment\n}\n"))
+    assert out.strip() == ""
+
+
+def test_partially_todod_block_still_emits_what_resolved():
+    """Pruning must only drop empty leftovers, never keys that converted."""
+    schema = _schema()
+    hf = parse("general {\n    gaps_in = 4\n    not_a_real_key = 1\n}\n")
+    out = convert(schema, hf)
+    assert "gaps_in = 4" in out
+    assert "not_a_real_key" in out  # kept as a TODO
+    assert "hl.config" in out
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
