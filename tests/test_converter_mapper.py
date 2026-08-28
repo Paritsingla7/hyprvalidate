@@ -18,6 +18,7 @@ from hyprvalidate.converter.mapper import convert
 from hyprvalidate.luaast import reader
 from hyprvalidate.luaast.luac_gate import check_source as luac_check_source
 from hyprvalidate import checker
+from hyprvalidate.checker import FindingKind
 
 REPO_ROOT = Path(__file__).parent.parent
 REAL_CONF = FIXTURES / "hyprland.conf"
@@ -200,13 +201,28 @@ def test_real_config_conversion_has_only_the_expected_known_gaps():
 
 
 def test_real_config_conversion_checker_findings_are_only_the_known_joke_value():
+    """The real vendored config has exactly one deliberate type-mismatch
+    canary (see above) plus four genuine duplicate-key binds that were
+    already there in the wild - $mainMod+G/M/V and $mainMod+ALT+space are
+    each bound twice to different actions, silently shadowing one of the
+    two. Found by the duplicate-bind check added for hyprvalidate/checker.py
+    (Hyprland issue #15871), not injected for this test."""
     schema = _schema()
     hf = parse_file(REAL_CONF)
     out = convert(schema, hf)
     tree = reader.parse(out)
     findings = checker.check(schema, tree)
-    assert len(findings) == 1
-    assert "animations.enabled" in findings[0].message
+
+    type_mismatches = [f for f in findings if f.kind == FindingKind.TYPE_MISMATCH]
+    assert len(type_mismatches) == 1
+    assert "animations.enabled" in type_mismatches[0].message
+
+    duplicate_binds = [f for f in findings if f.kind == FindingKind.DUPLICATE_BIND]
+    assert len(duplicate_binds) == 8  # 4 colliding key combos, 2 findings each
+    flagged_keys = {f.message.split("'")[1] for f in duplicate_binds}
+    assert flagged_keys == {"SUPER + G", "SUPER + M", "SUPER + V", "SUPER + ALT + space"}
+
+    assert len(findings) == len(type_mismatches) + len(duplicate_binds)
 
 
 def test_fully_todod_block_emits_no_empty_config_table():

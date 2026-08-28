@@ -121,7 +121,11 @@ hyprvalidate check ~/.config/hypr          # a whole directory
 ```
 
 Catches unknown dispatchers, invalid config keys, wrong value types, bad call
-arity, and invalid fields inside a spec table:
+arity, invalid fields inside a spec table, dispatcher factories referenced
+without being called (`hl.dsp.window.close` instead of
+`hl.dsp.window.close()`), duplicate key binds, and unquoted string values
+that would silently evaluate to `nil` (`accel_profile = flat` instead of
+`accel_profile = "flat"`):
 
 ```console
 $ hyprvalidate check hyprland.lua

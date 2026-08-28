@@ -60,6 +60,52 @@ Scope, stated explicitly rather than left implicit:
     suppress_event/no_focus) are dynamically dispatched and deliberately
     absent from the stub - the same fact noted above about `hl.plugin.*`,
     rediscovered here for window rules specifically.
+  - Uncalled-dispatcher-factory checking: any call argument whose declared
+    param type includes `HL.Dispatcher` (currently `hl.bind`'s `dispatcher`
+    param and `hl.dispatch`'s single param - found generically by scanning
+    the schema, not hardcoded to those two names) is checked for being a
+    bare `hl.dsp.*`-style symbol reference rather than an actual call, e.g.
+    `hl.bind("SUPER + Q", hl.dsp.window.close)` (missing the trailing
+    `()`). This is exactly the class of bug Hyprland's own issue #15871
+    ("Improve lua error reporting") calls out - a factory reference passed
+    where its *result* was meant, which type-checks under the stub's
+    `HL.Dispatcher|function` union (a bare function reference IS a
+    `function`) so nothing else here catches it. Detected by noticing the
+    argument resolves (via `resolve_symbol`) to a function itself, rather
+    than to a plain value or a genuine call/lambda.
+  - Duplicate-bind checking: every `hl.bind(keys, ...)` call's `keys`
+    argument is resolved - if it's a plain string literal, or a
+    concatenation of only string literals (e.g. `"SUPER" .. " + Q"`) - and
+    grouped; more than one bind resolving to the identical key combo is
+    flagged. Also directly from #15871 ("repeating keys in a bind").
+    Deliberately narrow: a `keys` expression built from a variable (the
+    overwhelmingly common real-world pattern, e.g. `mainMod .. " + Q"`)
+    can't be resolved without evaluating the script, so those binds are
+    silently skipped rather than guessed at - same limitation
+    `resolve_literal`/`_walk_config_table` already document for values
+    that aren't literals.
+  - Possible-missing-quotes checking: a config or spec-table value that's a
+    *bare, single identifier* (`accel_profile = flat`, not `accel_profile =
+    "flat"`) is flagged when that identifier is never assigned anywhere in
+    the file (as a local, a global, a for-loop variable, or a function
+    parameter) and the field's schema type includes `string`. An
+    identifier that was never assigned would resolve to Lua's implicit
+    `nil` global at runtime - i.e. this isn't a guess about intent, it's
+    "this specific value cannot do anything other than silently become
+    nil". This is the exact real-world bug in
+    github.com/hyprwm/Hyprland#15727: a user's migrated `accel_profile =
+    flat` silently discarded the accel profile and changed their mouse
+    sensitivity, and was only found by a stranger reading their config.
+    Deliberately does NOT fire for an identifier that *is* assigned
+    somewhere (e.g. `local terminal = "foot"; ... = terminal`) - that's
+    the legitimate variable-reference pattern already accepted elsewhere
+    in this module, and this check reuses that same conservative
+    "can't disprove it, don't flag it" stance. Scope tracking is
+    deliberately flat (every assignment anywhere in the file counts as
+    "defined", not just ones in an enclosing scope) - a false negative
+    (missing a genuinely-undefined shadowed local) is an acceptable
+    trade for never flagging a legitimately-scoped local as if it
+    weren't defined.
 """
 
 from __future__ import annotations
@@ -67,7 +113,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from luaparser.astnodes import Call, Method, Table, Field as LuaField
+from luaparser.astnodes import (
+    Call, Invoke, Method, Table, Field as LuaField, Name,
+    LocalAssign, Assign, Forin, Fornum,
+    Function, LocalFunction, AnonymousFunction,
+)
 
 from hyprvalidate.luaast import reader
 from hyprvalidate.schema.extractor import Schema
@@ -79,6 +129,9 @@ class FindingKind(str, Enum):
     TYPE_MISMATCH = "type_mismatch"
     ARITY_MISMATCH = "arity_mismatch"
     UNKNOWN_SPEC_FIELD = "unknown_spec_field"
+    UNCALLED_DISPATCHER = "uncalled_dispatcher"
+    DUPLICATE_BIND = "duplicate_bind"
+    POSSIBLE_MISSING_QUOTES = "possible_missing_quotes"
 
 
 @dataclass
@@ -112,6 +165,41 @@ def _scalar_kind_matches(kind: str, type_expr: str) -> bool:
         if compat and kind in compat:
             return True
     return False
+
+
+def _type_expr_accepts_string(type_expr: str) -> bool:
+    return "string" in (a.strip() for a in type_expr.split("|"))
+
+
+# Globals provided by the Hyprland Lua runtime itself, not by anything a
+# config file assigns - a bare reference to one of these is never "missing
+# quotes", it's a real (if oddly-typed) value. Currently just the API root;
+# extend here if the runtime grows more.
+_RUNTIME_GLOBALS = {"hl"}
+
+
+def _collect_defined_names(tree) -> set[str]:
+    """Every identifier assigned anywhere in the file - as a local, a
+    global, a for-loop variable, or a function parameter - flattened into
+    one set with no scope structure. Used by the missing-quotes check: an
+    identifier NOT in this set can only ever resolve to Lua's implicit
+    `nil` global at runtime, so a bare reference to it in a string-typed
+    field is a directly demonstrable bug, not a guess. Deliberately flat
+    (ignores actual scoping) - see module docstring for why that's the
+    right trade-off here."""
+    names: set[str] = set(_RUNTIME_GLOBALS)
+    for node in reader.walk(tree):
+        if isinstance(node, (LocalAssign, Assign, Forin)):
+            names.update(t.id for t in node.targets if isinstance(t, Name))
+        elif isinstance(node, Fornum):
+            if isinstance(node.target, Name):
+                names.add(node.target.id)
+        elif isinstance(node, (Function, LocalFunction, AnonymousFunction, Method)):
+            names.update(a.id for a in node.args if isinstance(a, Name))
+            name_node = getattr(node, "name", None)
+            if isinstance(name_node, Name):
+                names.add(name_node.id)
+    return names
 
 
 @dataclass
@@ -249,8 +337,25 @@ def resolve_symbol(schema: Schema, dotted_name: str) -> tuple[bool, str, str | N
     return True, "resolved to a namespace (not called further)", None
 
 
+def _missing_quotes_finding(
+    key_or_field_name: str, value: object, type_expr: str, line: int | None,
+    defined_names: set[str],
+) -> Finding | None:
+    if not (isinstance(value, Name) and _type_expr_accepts_string(type_expr)):
+        return None
+    if value.id in defined_names:
+        return None
+    return Finding(
+        FindingKind.POSSIBLE_MISSING_QUOTES, line,
+        f"'{key_or_field_name}' is set to the bare identifier '{value.id}', "
+        f"which isn't defined anywhere in this file and would evaluate to "
+        f"nil - did you mean the string \"{value.id}\"?",
+    )
+
+
 def _walk_config_table(
-    schema: Schema, table: Table, prefix: str, line: int | None
+    schema: Schema, table: Table, prefix: str, line: int | None,
+    defined_names: set[str],
 ) -> list[Finding]:
     findings: list[Finding] = []
     for field in table.fields:
@@ -300,14 +405,14 @@ def _walk_config_table(
                 # not checked further (see module docstring).
             else:
                 findings.extend(
-                    _walk_config_table(schema, field.value, key_path, field_line)
+                    _walk_config_table(schema, field.value, key_path, field_line, defined_names)
                 )
             continue
 
         if is_leaf:
+            type_expr = schema.config_value_types[key_path]
             literal = reader.resolve_literal(field.value)
             if literal is not None:
-                type_expr = schema.config_value_types[key_path]
                 if not _scalar_kind_matches(literal.kind, type_expr) and not _has_table_alternative(type_expr):
                     findings.append(
                         Finding(
@@ -316,11 +421,38 @@ def _walk_config_table(
                             f"'{key_path}' expects {type_expr}, got {literal.kind} ({literal.value!r})",
                         )
                     )
-            # else: not a literal (variable/call) - can't check, accepted.
+            else:
+                finding = _missing_quotes_finding(key_path, field.value, type_expr, field_line, defined_names)
+                if finding is not None:
+                    findings.append(finding)
+                # else: not a literal and not a flaggable bare identifier
+                # (variable/call/defined-name) - can't check, accepted.
         # else (is_container but value isn't a Table): malformed but not
         # something we can classify further; skip rather than guess.
 
     return findings
+
+
+def _resolve_static_string(expr) -> str | None:
+    """Resolve an expression to a plain string if it's a string literal, or
+    a `Concat` (Lua `..`) of only string literals - e.g. `"SUPER" .. " + Q"`.
+    Returns None for anything else, notably a concat involving a variable
+    (`mainMod .. " + Q"`) - can't be resolved without evaluating the script,
+    the same limitation `reader.resolve_literal` documents for values in
+    general. Lives here rather than in `reader` because `resolve_literal`'s
+    contract is explicitly scalars-only; this is a narrower, checker-local
+    need (duplicate-bind detection)."""
+    from luaparser.astnodes import Concat
+
+    literal = reader.resolve_literal(expr)
+    if literal is not None:
+        return literal.value if literal.kind == "string" else None
+    if isinstance(expr, Concat):
+        left = _resolve_static_string(expr.left)
+        right = _resolve_static_string(expr.right)
+        if left is not None and right is not None:
+            return left + right
+    return None
 
 
 def _field_key_name(key_expr) -> str | None:
@@ -335,7 +467,8 @@ def _field_key_name(key_expr) -> str | None:
 
 
 def _check_spec_table(
-    schema: Schema, table: Table, class_name: str, line: int | None
+    schema: Schema, table: Table, class_name: str, line: int | None,
+    defined_names: set[str],
 ) -> list[Finding]:
     """Check a table's keys/values against a schema class's own fields
     (e.g. HL.MonitorSpec) - the spec-table mechanism, distinct from
@@ -364,7 +497,7 @@ def _check_spec_table(
 
         if isinstance(field.value, Table):
             if type_expr in schema.classes:
-                findings.extend(_check_spec_table(schema, field.value, type_expr, field_line))
+                findings.extend(_check_spec_table(schema, field.value, type_expr, field_line, defined_names))
             elif not _has_table_alternative(type_expr):
                 findings.append(Finding(
                     FindingKind.TYPE_MISMATCH, field_line,
@@ -379,8 +512,14 @@ def _check_spec_table(
                     FindingKind.TYPE_MISMATCH, field_line,
                     f"'{key_name}' on {class_name} expects {type_expr}, got {literal.kind} ({literal.value!r})",
                 ))
-        # else: not a literal (variable/call) - can't check, accepted, same
-        # as _walk_config_table's documented behavior.
+        else:
+            # Not a literal - either a flaggable bare identifier (see
+            # _missing_quotes_finding) or a genuine variable/call, which
+            # can't be checked further and is accepted, same as
+            # _walk_config_table's documented behavior.
+            finding = _missing_quotes_finding(key_name, field.value, type_expr, field_line, defined_names)
+            if finding is not None:
+                findings.append(finding)
 
     return findings
 
@@ -389,14 +528,27 @@ def check(schema: Schema, tree) -> list[Finding]:
     """Run every check against an already-parsed Lua AST (from
     hyprvalidate.luaast.reader.parse/parse_file)."""
     findings: list[Finding] = []
+    bind_key_lines: dict[str, list[int | None]] = {}
+    defined_names = _collect_defined_names(tree)
 
     for node in reader.walk(tree):
-        if not isinstance(node, (Call, Method)):
+        # NB: `Method` (a `function T:method() end` *definition*) has no
+        # `.func` - it's not a call at all. `Invoke` (an `obj:bar()` *call*)
+        # is what belongs here; Hyprland's own API is exclusively dot-style
+        # (`hl.bind(...)`) so an Invoke's bare method name never resolves
+        # as `hl.*` and is harmlessly skipped below, same as any other
+        # foreign call - the only thing that matters is not crashing on it.
+        if not isinstance(node, (Call, Invoke)):
             continue
         dotted = reader.resolve_dotted_name(node.func)
         if dotted is None:
             continue
         line = node.first_token.line if node.first_token else None
+
+        if dotted == "hl.bind" and node.args:
+            keys = _resolve_static_string(node.args[0])
+            if keys is not None:
+                bind_key_lines.setdefault(keys, []).append(line)
 
         is_valid, reason, sig_type_expr = resolve_symbol(schema, dotted)
         if not is_valid:
@@ -405,6 +557,21 @@ def check(schema: Schema, tree) -> list[Finding]:
 
         if sig_type_expr is not None:
             sig = parse_fun_signature(sig_type_expr)
+            if sig is not None:
+                for idx, param in enumerate(sig.params):
+                    if "HL.Dispatcher" not in param.type_expr or idx >= len(node.args):
+                        continue
+                    arg_dotted = reader.resolve_dotted_name(node.args[idx])
+                    if arg_dotted is None:
+                        continue
+                    arg_valid, _reason, arg_sig = resolve_symbol(schema, arg_dotted)
+                    if arg_valid and arg_sig is not None:
+                        findings.append(Finding(
+                            FindingKind.UNCALLED_DISPATCHER, line,
+                            f"{dotted}: argument {idx + 1} ('{arg_dotted}') is a "
+                            f"dispatcher factory reference, not a call - did you "
+                            f"mean '{arg_dotted}(...)'?",
+                        ))
             if sig is not None and not sig.has_vararg:
                 n_args = len(node.args)
                 min_args = sum(1 for p in sig.params if not p.optional)
@@ -440,11 +607,21 @@ def check(schema: Schema, tree) -> list[Finding]:
                             arg = node.args[idx]
                             if isinstance(arg, Table):
                                 findings.extend(
-                                    _check_spec_table(schema, arg, param.type_expr, line)
+                                    _check_spec_table(schema, arg, param.type_expr, line, defined_names)
                                 )
 
         if dotted == "hl.config" and node.args and isinstance(node.args[0], Table):
-            findings.extend(_walk_config_table(schema, node.args[0], "", line))
+            findings.extend(_walk_config_table(schema, node.args[0], "", line, defined_names))
+
+    for keys, lines in bind_key_lines.items():
+        if len(lines) < 2:
+            continue
+        for this_line in lines:
+            others = ", ".join(str(l) for l in lines if l != this_line)
+            findings.append(Finding(
+                FindingKind.DUPLICATE_BIND, this_line,
+                f"'{keys}' is bound more than once (also at line(s) {others})",
+            ))
 
     return findings
 

@@ -4,7 +4,60 @@ Notable changes. Format loosely follows [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+### Added
+
+- **`check` now catches unquoted-string config values that would silently
+  evaluate to `nil`** — e.g. `accel_profile = flat` instead of
+  `accel_profile = "flat"`. This is the exact real-world bug in
+  [hyprwm/Hyprland#15727](https://github.com/hyprwm/Hyprland/discussions/15727):
+  a user's config migration dropped the quotes, `accel_profile` silently
+  became nothing, and their mouse sensitivity changed — found only because
+  a stranger happened to read their config on GitHub. The check fires only
+  when the bare identifier is never assigned anywhere in the file (as a
+  local, global, for-loop variable, or function parameter) — an identifier
+  that genuinely is a variable reference to a defined value is left alone,
+  same conservative stance as the rest of this module. New finding kind
+  `possible_missing_quotes`, checked in both `hl.config` blocks and
+  spec-table arguments (`hl.monitor`, `hl.device`, etc).
+
+- **`check` now catches two error classes Hyprland's own issue
+  [hyprwm/Hyprland#15871](https://github.com/hyprwm/Hyprland/issues/15871)
+  ("Improve lua error reporting") calls out as currently undetected:**
+  - **Uncalled dispatcher factory reference** — `hl.bind("SUPER + Q",
+    hl.dsp.window.close)` (missing the trailing `()`). This type-checks
+    under the stub's `HL.Dispatcher|function` union, since a bare function
+    reference *is* a `function` — nothing previously caught it. New finding
+    kind `uncalled_dispatcher`.
+  - **Duplicate key binds** — the same key combo bound more than once
+    (`hl.bind("SUPER + G", ...)` appearing twice), silently shadowing one
+    of the two at runtime. Resolves string-literal `keys` arguments,
+    including `..`-concatenation of only string literals; a `keys`
+    expression built from a variable (the common `mainMod .. " + Q"`
+    pattern) can't be resolved statically and is skipped rather than
+    guessed at. New finding kind `duplicate_bind`. Caught four genuine,
+    previously-undetected duplicate binds in this project's own vendored
+    real-world test fixture (`$mainMod+G/M/V` and `$mainMod+ALT+space`,
+    each bound twice to different actions).
+
+  Both checks are derived entirely from the schema (no hand-maintained
+  per-dispatcher data) — consistent with this project's approach of never
+  hardcoding what the stub can tell it directly. A third case from the
+  same issue, arity-checking `dsp.*` dispatcher-builder calls (e.g.
+  `hl.dsp.exec_raw("...", {float = true})`), is **not** implemented: the
+  stub types every `dsp.*` factory as untyped `fun(...)` with no argument
+  count at all, so checking it would require a separately-maintained table
+  of per-dispatcher arities — the exact drift risk this project exists to
+  avoid (see `docs/COMPARISON.md`).
+
 ### Fixed
+
+- **`check` crashed with `AttributeError` on a config containing a
+  colon-method definition** (`function T:method() end`), found while
+  building the checks above. `Method` (that definition node) was grouped
+  with `Call` for call-detection, but has no `.func` attribute — only
+  `Invoke` (an actual `obj:bar()` call) does. Real Hyprland configs don't
+  define OOP-style methods, so this never surfaced in practice, but the
+  checker shouldn't crash on any syntactically valid Lua.
 
 - **`convert` emitted empty `hl.config({ <block> = {} })` tables** for blocks
   whose every key was TODO'd out (or that were empty in the source). These

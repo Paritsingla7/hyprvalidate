@@ -143,7 +143,7 @@ def test_recursion_into_a_nested_class_field_works():
 
     assign = next(n for n in luaast.walk(tree) if isinstance(n, Assign))
     table = assign.values[0]
-    findings = _check_spec_table(schema, table, "HL.ConfigOpt", None)
+    findings = _check_spec_table(schema, table, "HL.ConfigOpt", None, set())
     kinds_and_msgs = [(f.kind, f.message) for f in findings]
     assert (FindingKind.UNKNOWN_SPEC_FIELD, "'notarealfield' is not a field of HL.ConfigOpt.General") in kinds_and_msgs
 

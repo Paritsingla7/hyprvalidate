@@ -162,6 +162,17 @@ def test_every_file_from_the_real_config_is_valid_lua():
         assert result.ok, f"{name}: {result.message}"
 
 
+def _message_without_line_refs(message: str) -> str:
+    """DUPLICATE_BIND messages embed the *other* occurrences' line numbers
+    (e.g. "also at line(s) 119") - those numbers are necessarily different
+    between the flat conversion (one file, absolute line numbers) and the
+    split conversion (same bind at a small relative line number within its
+    own module), even though the same logical duplicate was found both
+    ways. Strip that suffix so the comparison is about *which* findings
+    were made, not incidental line arithmetic."""
+    return message.split(" (also at line(s)")[0]
+
+
 def test_real_config_split_findings_match_the_flat_conversion():
     """The split must not introduce or hide findings relative to converting
     the same file flat - same schema issues, same count."""
@@ -174,7 +185,11 @@ def test_real_config_split_findings_match_the_flat_conversion():
         for f in checker.check_source(schema, src)
     ]
     assert len(split_findings) == len(flat_findings)
-    assert {f.message for f in split_findings} == {f.message for f in flat_findings}
+    assert {
+        _message_without_line_refs(f.message) for f in split_findings
+    } == {
+        _message_without_line_refs(f.message) for f in flat_findings
+    }
 
 
 def test_real_config_produces_the_expected_module_set():
