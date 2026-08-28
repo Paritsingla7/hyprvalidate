@@ -6,8 +6,27 @@ Notable changes. Format loosely follows [Keep a Changelog](https://keepachangelo
 
 ### Added
 
-- **Foundation for schema-diff** (no CLI surface yet — this lays the
-  groundwork, doesn't expose it): `hyprvalidate/schema/diff.py` structurally
+- **`hyprvalidate diff-impact`** — Phase 2/3 of schema-diff, building on the
+  foundation below: cross-references what changed between two schemas
+  against what a specific config *actually uses* (`hyprvalidate/schema/impact.py`),
+  instead of reporting Hyprland's whole API surface diff. Verified against
+  the real `hl.permission{}` `allow` → `mode` regression: a config that
+  constructs `hl.permission({ allow = ... })` gets flagged; a config that
+  never touches `hl.permission` at all doesn't, even diffed against the
+  exact same two schema versions. Exits `0` by default even when it finds
+  something — this reports what changed, it doesn't confirm breakage — with
+  `--fail-on-impact` to opt a CI job into gating on it.
+
+  Known, documented gap: only sees fields *written* into a spec-table
+  constructor you build and pass in (`hl.monitor({ mode = ... })`), not
+  fields *read* off a runtime object handed to a callback (e.g. `win.class`
+  inside an `hl.on(...)` handler) — that second pattern is the actual shape
+  of the real `HL.Window` `over_fullscreen` regression this feature was
+  scoped around, and it's invisible here by construction: knowing what type
+  a callback parameter carries needs real type-flow inference this doesn't
+  attempt. Not silently overclaimed.
+
+- **Foundation for schema-diff**: `hyprvalidate/schema/diff.py` structurally
   compares two `Schema` snapshots — classes/fields/aliases/config-keys
   added, removed, or type-changed — plus a conservative "possible rename"
   heuristic that only fires on a clean 1:1 match (exactly one removed name
