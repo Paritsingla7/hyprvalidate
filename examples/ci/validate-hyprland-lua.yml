@@ -35,7 +35,7 @@ on:
       - "**/*.lua"
 
 env:
-  HYPRVALIDATE_VERSION: "0.2.0"
+  HYPRVALIDATE_VERSION: "0.3.0"
   # Path to your config - a single .lua file or a directory (e.g. from
   # `hyprvalidate convert --split`). Every *.lua file in a directory is
   # checked.

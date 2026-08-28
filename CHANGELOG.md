@@ -4,6 +4,8 @@ Notable changes. Format loosely follows [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-08-28
+
 ### Added
 
 - **`check --fix`** applies the corrections that have exactly one right
@@ -82,6 +84,10 @@ Notable changes. Format loosely follows [Keep a Changelog](https://keepachangelo
   avoid (see `docs/COMPARISON.md`).
 
 ### Fixed
+
+- **`packaging/PKGBUILD` was pinned to `pkgver=0.1.0`** even after the
+  0.2.0 release — stale since that release, unrelated to anything else in
+  this changelog entry, noticed and fixed while bumping the version here.
 
 - **`check` crashed with `AttributeError` on a config containing a
   colon-method definition** (`function T:method() end`), found while
