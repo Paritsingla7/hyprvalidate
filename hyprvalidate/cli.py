@@ -26,7 +26,7 @@ from hyprvalidate.luaast.luac_gate import LuacNotFound
 from hyprvalidate.hyprlang import parser as hyprlang_parser
 from hyprvalidate.converter import mapper
 from hyprvalidate.schema.extractor import load_schema
-from hyprvalidate import checker
+from hyprvalidate import checker, fixer
 
 DEFAULT_STUB_PATH = "/usr/share/hypr/stubs/hl.meta.lua"
 
@@ -57,9 +57,10 @@ def _expand_paths(paths: list[Path]) -> tuple[list[Path], list[str]]:
     return expanded, errors
 
 
-def check_files(paths: list[Path], stub_path: str) -> tuple[int, list[str]]:
-    """Pure orchestration, no I/O to stdout - kept separate from main() so
-    it's directly testable without subprocess/capsys."""
+def check_files(paths: list[Path], stub_path: str, fix: bool = False) -> tuple[int, list[str]]:
+    """Pure orchestration, no I/O to stdout (beyond overwriting a file
+    in-place when `fix` finds something to fix) - kept separate from main()
+    so it's directly testable without subprocess/capsys."""
     lines: list[str] = []
 
     if not Path(stub_path).is_file():
@@ -79,6 +80,7 @@ def check_files(paths: list[Path], stub_path: str) -> tuple[int, list[str]]:
 
     syntax_failed = False
     schema_findings_total = 0
+    fixed_total = 0
 
     for path in paths:
         luac_result = luac_gate.check_file(path)
@@ -87,14 +89,40 @@ def check_files(paths: list[Path], stub_path: str) -> tuple[int, list[str]]:
             lines.append(f"{luac_result.message}")
             continue
 
-        tree = reader.parse_file(path)
+        source = path.read_text()
+        tree = reader.parse(source)
         findings = checker.check(schema, tree)
+
+        if fix and any(f.fix is not None for f in findings):
+            result = fixer.apply_fixes(source, findings)
+            # Paranoia matching convert's own discipline: never write a
+            # patched file without first confirming the patch itself is
+            # valid Lua and re-validating against the schema - a fix that
+            # broke syntax, or that (like inserting `()` on a dispatcher
+            # that turns out to need arguments) reveals a fresh problem, is
+            # reported, not silently written over.
+            luac_patched = luac_gate.check_source(result.source)
+            if not luac_patched.ok:
+                return 2, [
+                    f"error: applying fixes to {path} produced invalid Lua - "
+                    "this is a hyprvalidate bug, please report it:",
+                    luac_patched.message or "",
+                ]
+            path.write_text(result.source)
+            fixed_total += len(result.applied)
+            lines.append(f"{path}: fixed {len(result.applied)} issue(s)")
+            for f in result.applied:
+                lines.append(f"  [{f.kind.value}] {f.message}")
+            findings = checker.check_source(schema, result.source)
+
         schema_findings_total += len(findings)
         for f in sorted(findings, key=lambda f: (f.line or 0)):
             lines.append(f"{path}:{f.line}: [{f.kind.value}] {f.message}")
 
     if syntax_failed:
         return 2, lines
+    if fixed_total:
+        lines.append(f"\nfixed {fixed_total} issue(s).")
     if schema_findings_total:
         lines.append(f"\n{schema_findings_total} issue(s) found.")
         return 1, lines
@@ -218,6 +246,15 @@ def main(argv: list[str] | None = None) -> int:
             f"to run without Hyprland installed (default: {DEFAULT_STUB_PATH})"
         ),
     )
+    check_parser.add_argument(
+        "--fix", action="store_true",
+        help=(
+            "apply the unambiguous fixes in place (missing quotes, uncalled "
+            "dispatcher factories) and re-check; findings with no single "
+            "correct fix (unknown symbols/keys, type/arity mismatches, "
+            "duplicate binds) are still reported, never guessed at"
+        ),
+    )
 
     convert_parser = subparsers.add_parser(
         "convert", help="convert an old hyprlang .conf file into Lua"
@@ -244,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "check":
         try:
-            exit_code, lines = check_files(args.files, args.stub)
+            exit_code, lines = check_files(args.files, args.stub, args.fix)
         except LuacNotFound as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2

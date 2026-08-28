@@ -1,0 +1,118 @@
+# Validate a Hyprland Lua config in CI, without installing Hyprland itself -
+# and auto-fix what can be safely auto-fixed.
+#
+# Copy this file into your dotfiles repo as .github/workflows/validate-hyprland-lua.yml
+# and adjust CONFIG_PATH below to point at your config. That's the whole setup.
+#
+# The hyprvalidate version and the schema.json snapshot are pinned to the
+# same git tag on purpose - they're extracted from the same Hyprland stub,
+# so validating against a schema.json from a different version than the
+# installed tool would silently check your config against dispatchers/config
+# keys that may not match what that tool version actually understands.
+# Bump HYPRVALIDATE_VERSION when you want a newer schema; the two always
+# move together.
+#
+# Two jobs, deliberately split by trigger:
+#   - `validate` (pull_request): read-only. Never pushes anything, so it
+#     works the same whether the PR is from a branch in this repo or a
+#     fork - no write permissions needed, no surprise commits landing on a
+#     PR mid-review.
+#   - `validate-and-autofix` (push): runs `check --fix`. The two fixes
+#     hyprvalidate applies (missing quotes, uncalled dispatcher factories)
+#     have exactly one correct answer, so committing them automatically is
+#     safe - anything it *can't* safely fix (duplicate binds, unknown
+#     names, type mismatches) is left reported and still fails the job.
+#     Needs `contents: write` to push the fix commit back onto the branch.
+
+name: Validate Hyprland Lua config
+
+on:
+  push:
+    paths:
+      - "**/*.lua"
+  pull_request:
+    paths:
+      - "**/*.lua"
+
+env:
+  HYPRVALIDATE_VERSION: "0.3.0"
+  # Path to your config - a single .lua file or a directory (e.g. from
+  # `hyprvalidate convert --split`). Every *.lua file in a directory is
+  # checked.
+  CONFIG_PATH: "hypr"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install hyprvalidate
+        run: pipx install "hyprvalidate==${HYPRVALIDATE_VERSION}"
+
+      - name: Fetch schema snapshot for this hyprvalidate version
+        run: >
+          curl -fsSL
+          "https://raw.githubusercontent.com/Paritsingla7/hyprvalidate/v${HYPRVALIDATE_VERSION}/schema.json"
+          -o schema.json
+
+      - name: Check config against Hyprland's real API
+        run: hyprvalidate check "${CONFIG_PATH}" --stub schema.json
+
+  validate-and-autofix:
+    if: >
+      github.event_name == 'push' &&
+      !contains(github.event.head_commit.message, '[hyprvalidate-autofix]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install hyprvalidate
+        run: pipx install "hyprvalidate==${HYPRVALIDATE_VERSION}"
+
+      - name: Fetch schema snapshot for this hyprvalidate version
+        run: >
+          curl -fsSL
+          "https://raw.githubusercontent.com/Paritsingla7/hyprvalidate/v${HYPRVALIDATE_VERSION}/schema.json"
+          -o schema.json
+
+      # continue-on-error: unfixable findings make this exit non-zero, but
+      # the commit step below still needs to run so any *mechanical* fixes
+      # get pushed even when something else still needs a human. The job
+      # is failed explicitly in the last step instead.
+      - name: Fix what can be safely fixed
+        id: fix
+        continue-on-error: true
+        run: hyprvalidate check "${CONFIG_PATH}" --stub schema.json --fix
+
+      - name: Commit and push any fixes
+        run: |
+          if ! git diff --quiet -- "${CONFIG_PATH}"; then
+            git config user.name "hyprvalidate[bot]"
+            git config user.email "actions@users.noreply.github.com"
+            git add -- "${CONFIG_PATH}"
+            git commit -m "hyprvalidate: auto-fix config [hyprvalidate-autofix]
+
+          Missing quotes and/or uncalled dispatcher factories - the two
+          corrections hyprvalidate --fix applies automatically because
+          they have exactly one correct answer. Anything else it found is
+          reported in this job's log, not guessed at."
+            git push origin "HEAD:${{ github.ref_name }}"
+          fi
+
+      - name: Fail if unfixable findings remain
+        if: steps.fix.outcome == 'failure'
+        run: exit 1

@@ -1,6 +1,6 @@
 # Maintainer: Paritsingla7 <https://github.com/Paritsingla7>
 pkgname=hyprvalidate
-pkgver=0.1.0
+pkgver=0.3.0
 pkgrel=1
 pkgdesc="Convert and validate Hyprland Lua configs against Hyprland's real API schema"
 arch=('any')

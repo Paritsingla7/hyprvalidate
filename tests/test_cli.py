@@ -75,6 +75,71 @@ def test_real_migrated_config_directory_is_clean():
     assert code == 0, f"expected the project's own real config to be clean: {lines}"
 
 
+FIXABLE_SNIPPET = (
+    'hl.bind("SUPER + Q", hl.dsp.window.close)\n'
+    'hl.config({ input = { accel_profile = flat } })\n'
+)
+
+
+def test_fix_writes_corrected_file_and_exits_zero_when_that_clears_everything(tmp_path):
+    f = tmp_path / "fixable.lua"
+    f.write_text(FIXABLE_SNIPPET)
+    code, lines = check_files([f], SCHEMA_PATH, fix=True)
+    assert code == 0
+    assert "fixed 2 issue(s)" in "\n".join(lines)
+    assert f.read_text() == (
+        'hl.bind("SUPER + Q", hl.dsp.window.close())\n'
+        'hl.config({ input = { accel_profile = "flat" } })\n'
+    )
+    # The fixed file must itself be clean - not just "no crash".
+    assert check_files([f], SCHEMA_PATH) == (
+        0, [f"1 file(s) checked, no issues found."]
+    )
+
+
+def test_fix_leaves_unfixable_findings_reported_and_exits_one(tmp_path):
+    """duplicate_bind has no single correct fix (which of the two binds is
+    "right" is unknowable) - --fix must never guess at it, only report it,
+    same stance `convert` already takes for unrecognized names."""
+    f = tmp_path / "duplicate.lua"
+    f.write_text(
+        'hl.bind("SUPER + Q", hl.dsp.window.close())\n'
+        'hl.bind("SUPER + Q", hl.dsp.window.kill())\n'
+    )
+    before = f.read_text()
+    code, lines = check_files([f], SCHEMA_PATH, fix=True)
+    assert code == 1
+    assert f.read_text() == before  # nothing fixable, so nothing rewritten
+    assert any("duplicate_bind" in line for line in lines)
+    assert not any("fixed" in line for line in lines)
+
+
+def test_fix_on_an_already_clean_file_does_not_rewrite_it(tmp_path):
+    f = tmp_path / "clean.lua"
+    f.write_text(VALID_SNIPPET)
+    before_mtime = f.stat().st_mtime_ns
+    code, lines = check_files([f], SCHEMA_PATH, fix=True)
+    assert code == 0
+    assert f.stat().st_mtime_ns == before_mtime
+
+
+def test_fix_partial_leaves_remaining_findings_after_fixing_others(tmp_path):
+    """A file with both a fixable and an unfixable finding: the fixable one
+    is applied and the file is rewritten; the unfixable one is still
+    reported against the *patched* source (correct post-fix line numbers)."""
+    f = tmp_path / "mixed.lua"
+    f.write_text(
+        'hl.config({ input = { accel_profile = flat } })\n'
+        'hl.bind("SUPER + Q", hl.dsp.window.close())\n'
+        'hl.bind("SUPER + Q", hl.dsp.window.kill())\n'
+    )
+    code, lines = check_files([f], SCHEMA_PATH, fix=True)
+    assert code == 1
+    assert 'accel_profile = "flat"' in f.read_text()
+    assert any("duplicate_bind" in line for line in lines)
+    assert any("fixed 1 issue(s)" in line for line in lines)
+
+
 def test_convert_writes_output_file_and_exits_zero_when_clean(tmp_path):
     src = tmp_path / "in.conf"
     src.write_text("bind = SUPER, Q, killactive,\n")

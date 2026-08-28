@@ -108,6 +108,170 @@ def test_non_literal_config_value_is_accepted_uncritically():
     assert findings == []
 
 
+def test_uncalled_dispatcher_factory_is_flagged():
+    """Hyprland issue #15871 ("Improve lua error reporting"): binding to a
+    factory without calling it, e.g. `hl.dsp.window.close` instead of
+    `hl.dsp.window.close()`. Type-checks under the stub's
+    `HL.Dispatcher|function` union (a bare function reference IS a
+    `function`), so nothing else catches it - this is the dedicated check."""
+    schema = _schema()
+    findings = checker.check_source(schema, "hl.bind('SUPER + Q', hl.dsp.window.close)")
+    assert len(findings) == 1
+    assert findings[0].kind == FindingKind.UNCALLED_DISPATCHER
+    assert "hl.dsp.window.close" in findings[0].message
+
+
+def test_called_dispatcher_factory_is_not_flagged():
+    schema = _schema()
+    findings = checker.check_source(schema, "hl.bind('SUPER + Q', hl.dsp.window.close())")
+    assert findings == []
+
+
+def test_lambda_dispatcher_is_not_flagged():
+    """The `function` alternative in `HL.Dispatcher|function` - a genuine
+    lambda, not a bare factory reference - must not be flagged."""
+    schema = _schema()
+    findings = checker.check_source(
+        schema, "hl.bind('SUPER + M', function()\n  hl.dispatch(hl.dsp.exec_cmd('x'))\nend)"
+    )
+    assert findings == []
+
+
+def test_variable_holding_dispatcher_is_not_flagged():
+    """A local variable can't be statically resolved to a factory
+    reference - accepted, not flagged, same documented limitation as
+    literal-value checking elsewhere in this module."""
+    schema = _schema()
+    findings = checker.check_source(
+        schema, "local d = hl.dsp.window.close()\nhl.bind('SUPER + Q', d)"
+    )
+    assert findings == []
+
+
+def test_duplicate_literal_bind_is_flagged():
+    """Hyprland issue #15871: repeating keys in a bind."""
+    schema = _schema()
+    findings = checker.check_source(
+        schema,
+        "hl.bind('SUPER + Q', hl.dsp.window.close())\n"
+        "hl.bind('SUPER + Q', hl.dsp.window.kill())\n",
+    )
+    assert len(findings) == 2
+    assert all(f.kind == FindingKind.DUPLICATE_BIND for f in findings)
+    assert {f.line for f in findings} == {1, 2}
+
+
+def test_duplicate_bind_detected_across_string_concatenation():
+    """`"SUPER" .. " + Q"` is a concat of only string literals - resolvable
+    without evaluating the script, unlike a variable-based concat."""
+    schema = _schema()
+    findings = checker.check_source(
+        schema,
+        "hl.bind('SUPER' .. ' + Q', hl.dsp.window.close())\n"
+        "hl.bind('SUPER + Q', hl.dsp.window.kill())\n",
+    )
+    assert len(findings) == 2
+    assert all(f.kind == FindingKind.DUPLICATE_BIND for f in findings)
+
+
+def test_unique_binds_are_not_flagged():
+    schema = _schema()
+    findings = checker.check_source(
+        schema,
+        "hl.bind('SUPER + Q', hl.dsp.window.close())\n"
+        "hl.bind('SUPER + W', hl.dsp.window.kill())\n",
+    )
+    assert findings == []
+
+
+def test_bind_with_variable_key_is_not_flagged_as_duplicate():
+    """A `keys` expression involving a variable (the common real-world
+    pattern, e.g. `mainMod .. " + Q"`) can't be resolved without
+    evaluating the script - skipped, not guessed at, even if two such
+    binds would in fact collide at runtime."""
+    schema = _schema()
+    findings = checker.check_source(
+        schema,
+        "local mainMod = 'SUPER'\n"
+        "hl.bind(mainMod .. ' + Q', hl.dsp.window.close())\n"
+        "hl.bind(mainMod .. ' + Q', hl.dsp.window.kill())\n",
+    )
+    assert findings == []
+
+
+def test_unquoted_string_value_is_flagged_as_possible_missing_quotes():
+    """The exact real-world bug in github.com/hyprwm/Hyprland#15727: a user
+    migrating from the old .conf format wrote `accel_profile = flat`
+    instead of `accel_profile = "flat"`. The bare identifier `flat` isn't
+    defined anywhere, so it evaluates to nil at runtime, silently discarding
+    the accel profile and changing their mouse sensitivity - and was only
+    found by a stranger reading their config on GitHub."""
+    schema = _schema()
+    findings = checker.check_source(schema, "hl.config({ input = { accel_profile = flat } })")
+    assert len(findings) == 1
+    assert findings[0].kind == FindingKind.POSSIBLE_MISSING_QUOTES
+    assert "accel_profile" in findings[0].message
+    assert "flat" in findings[0].message
+
+
+def test_correctly_quoted_string_value_is_not_flagged():
+    schema = _schema()
+    findings = checker.check_source(schema, 'hl.config({ input = { accel_profile = "flat" } })')
+    assert findings == []
+
+
+def test_bare_identifier_that_is_a_real_local_variable_is_not_flagged():
+    """The legitimate pattern this check must not disturb: a config value
+    that really is a variable reference to a defined local."""
+    schema = _schema()
+    findings = checker.check_source(
+        schema,
+        'local myProfile = "flat"\nhl.config({ input = { accel_profile = myProfile } })',
+    )
+    assert findings == []
+
+
+def test_bare_identifier_defined_as_a_global_is_not_flagged():
+    schema = _schema()
+    findings = checker.check_source(
+        schema,
+        'myProfile = "flat"\nhl.config({ input = { accel_profile = myProfile } })',
+    )
+    assert findings == []
+
+
+def test_bare_identifier_in_spec_table_is_also_flagged():
+    """The same missing-quotes bug class inside a spec-table argument
+    (hl.monitor's HL.MonitorSpec), not just a top-level hl.config block -
+    the two mechanisms are checked by separate code paths in this module."""
+    schema = _schema()
+    findings = checker.check_source(schema, "hl.monitor({ mode = preferred })")
+    assert len(findings) == 1
+    assert findings[0].kind == FindingKind.POSSIBLE_MISSING_QUOTES
+    assert "preferred" in findings[0].message
+
+
+def test_colon_method_definition_does_not_crash_the_checker():
+    """Regression: `Method` (a `function T:method() end` *definition*) has
+    no `.func` attribute - it was previously grouped with `Call` for call
+    detection and crashed with AttributeError on any config containing one.
+    Real Hyprland configs don't define these, but the checker must not
+    crash on arbitrary valid Lua rather than only the subset it expects."""
+    schema = _schema()
+    findings = checker.check_source(schema, "function T:method(x) end")
+    assert findings == []
+
+
+def test_colon_method_call_does_not_crash_the_checker():
+    """The call-side counterpart: `obj:bar(1, 2)` parses as `Invoke`, not
+    `Call`. Hyprland's own API is exclusively dot-style, so this harmlessly
+    resolves as a non-hl.* call and produces no findings - the point is
+    that it doesn't crash."""
+    schema = _schema()
+    findings = checker.check_source(schema, "obj = {}\nobj:bar(1, 2)")
+    assert findings == []
+
+
 def test_the_projects_own_real_migrated_config_has_zero_findings():
     """End-to-end regression: every file in hyprland-lua/ was hand-verified
     against this same schema over the course of this project's own

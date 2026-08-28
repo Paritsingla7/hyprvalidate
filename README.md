@@ -121,7 +121,11 @@ hyprvalidate check ~/.config/hypr          # a whole directory
 ```
 
 Catches unknown dispatchers, invalid config keys, wrong value types, bad call
-arity, and invalid fields inside a spec table:
+arity, invalid fields inside a spec table, dispatcher factories referenced
+without being called (`hl.dsp.window.close` instead of
+`hl.dsp.window.close()`), duplicate key binds, and unquoted string values
+that would silently evaluate to `nil` (`accel_profile = flat` instead of
+`accel_profile = "flat"`):
 
 ```console
 $ hyprvalidate check hyprland.lua
@@ -134,13 +138,47 @@ hyprland.lua:47: [type_mismatch] 'animations.enabled' expects boolean, got strin
 **Exit codes:** `0` clean · `1` schema findings · `2` invalid Lua, unparseable
 input, or a missing schema. Scriptable in CI.
 
+`--fix` applies the fixes that have exactly one correct answer — adding
+quotes, adding `()` to a bare dispatcher reference — in place, then
+re-checks:
+
+```console
+$ hyprvalidate check hyprland.lua --fix
+hyprland.lua: fixed 2 issue(s)
+  [uncalled_dispatcher] hl.bind: argument 2 ('hl.dsp.window.close') is a dispatcher factory reference, not a call - did you mean 'hl.dsp.window.close(...)'?
+  [possible_missing_quotes] 'input.accel_profile' is set to the bare identifier 'flat', which isn't defined anywhere in this file and would evaluate to nil - did you mean the string "flat"?
+
+fixed 2 issue(s).
+```
+
+Findings with no single correct fix — an unknown dispatcher/config key
+(which real name was meant?), a type or arity mismatch, two binds fighting
+over the same key combo — are still reported, never guessed at. Same as
+`convert`: a fix that would produce invalid Lua, or reveal a fresh problem
+(e.g. a dispatcher that turns out to need arguments once it's actually
+called), is surfaced, not silently written over.
+
 ### Validating dotfiles in CI (no Hyprland needed)
 
 `--stub` accepts a `schema.json` snapshot as well as the live stub, so you can
-check a dotfiles repo on a runner that has no compositor installed:
+check a dotfiles repo on a runner that has no compositor installed. A ready
+GitHub Actions workflow is at
+[`examples/ci/validate-hyprland-lua.yml`](examples/ci/validate-hyprland-lua.yml);
+copy it into `.github/workflows/` and point `CONFIG_PATH` at your config. It's
+two jobs, split by trigger:
+
+- **on a pull request** — read-only `check`, fails the PR on findings. Works
+  the same for a same-repo branch or a fork; no write access needed, no
+  surprise commits landing mid-review.
+- **on a push** — `check --fix`, and if that changed anything, commits and
+  pushes the fix straight back onto the branch. Safe to automate because the
+  two things it fixes (missing quotes, uncalled dispatcher factories) have
+  exactly one correct answer; anything else it finds still fails the job
+  instead of being pushed.
 
 ```yaml
-- run: pipx install git+https://github.com/Paritsingla7/hyprvalidate.git
+- run: pipx install hyprvalidate
+- run: curl -fsSLo schema.json https://raw.githubusercontent.com/Paritsingla7/hyprvalidate/v0.3.0/schema.json
 - run: hyprvalidate check hypr/ --stub schema.json
 ```
 
