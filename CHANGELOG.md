@@ -31,7 +31,12 @@ Notable changes. Format loosely follows [Keep a Changelog](https://keepachangelo
   always in sync. Also fixes the README's own CI section, which had gone
   stale: it referenced `pipx install git+https://...` from before the PyPI
   release, and ran `hyprvalidate check ... --stub schema.json` without ever
-  saying where that file comes from.
+  saying where that file comes from. Two jobs: a read-only `check` gate on
+  pull requests (safe for fork PRs — no write access needed), and a
+  `check --fix` job on push that commits and pushes any mechanical fixes
+  straight back onto the branch, still failing the job if something
+  unfixable remains. Guards against re-triggering itself on its own
+  fix commit.
 
 - **`check` now catches unquoted-string config values that would silently
   evaluate to `nil`** — e.g. `accel_profile = flat` instead of

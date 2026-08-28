@@ -162,10 +162,19 @@ called), is surfaced, not silently written over.
 
 `--stub` accepts a `schema.json` snapshot as well as the live stub, so you can
 check a dotfiles repo on a runner that has no compositor installed. A ready
-GitHub Actions workflow — install, fetch the matching schema snapshot, fail
-the job on findings — is at
+GitHub Actions workflow is at
 [`examples/ci/validate-hyprland-lua.yml`](examples/ci/validate-hyprland-lua.yml);
-copy it into `.github/workflows/` and point `CONFIG_PATH` at your config.
+copy it into `.github/workflows/` and point `CONFIG_PATH` at your config. It's
+two jobs, split by trigger:
+
+- **on a pull request** — read-only `check`, fails the PR on findings. Works
+  the same for a same-repo branch or a fork; no write access needed, no
+  surprise commits landing mid-review.
+- **on a push** — `check --fix`, and if that changed anything, commits and
+  pushes the fix straight back onto the branch. Safe to automate because the
+  two things it fixes (missing quotes, uncalled dispatcher factories) have
+  exactly one correct answer; anything else it finds still fails the job
+  instead of being pushed.
 
 ```yaml
 - run: pipx install hyprvalidate
