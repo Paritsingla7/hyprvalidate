@@ -80,6 +80,28 @@ python site/build_bundle.py
 `tests/test_extractor.py` fails if `schema.json` has drifted from an installed
 stub, so CI catches this.
 
+## The `schemas/` corpus
+
+`schemas/vX.Y.Z.json` is one real schema snapshot per tagged Hyprland
+release, from v0.55.0 (the first Lua-config release) onward - not
+synthetic what-ifs. It's what `hyprvalidate.schema.diff` (comparing what
+changed between two Hyprland versions) is tested against, and what it
+needs to exist at all.
+
+After a new Hyprland release, extend it:
+
+```bash
+python scripts/generate_schema_history.py
+```
+
+This clones Hyprland into a temp dir (sparse: only `meta/` and
+`src/config/`, no build), finds every Lua-era tag not already in
+`schemas/`, and generates each one using *that tag's own*
+`generateLuaStubs.py` against *that tag's own* source - the generator's
+parsing logic has itself changed between versions, so using today's copy
+against yesterday's source would misrepresent that version. Safe to
+re-run any time; it only ever generates what's missing.
+
 ## Pull requests
 
 Run the tests, keep the diff scoped to one thing, and say in the description

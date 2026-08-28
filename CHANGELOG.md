@@ -4,6 +4,35 @@ Notable changes. Format loosely follows [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+### Added
+
+- **Foundation for schema-diff** (no CLI surface yet — this lays the
+  groundwork, doesn't expose it): `hyprvalidate/schema/diff.py` structurally
+  compares two `Schema` snapshots — classes/fields/aliases/config-keys
+  added, removed, or type-changed — plus a conservative "possible rename"
+  heuristic that only fires on a clean 1:1 match (exactly one removed name
+  and one added name sharing the same normalized type within a class or
+  the config-key namespace). Backed by `schemas/` — one real schema
+  snapshot per tagged Hyprland release from v0.55.0 onward, not synthetic
+  fixtures, generated via the new `scripts/generate_schema_history.py`
+  (verified end-to-end against the live Hyprland repo, byte-identical
+  output to hand-generation).
+
+  Tested against two real, dated Hyprland regressions:
+  `hl.permission{}`'s `allow` → `mode` (broke one day after Lua config
+  first shipped, [hyprwm/Hyprland#14400](https://github.com/hyprwm/Hyprland/pull/14400))
+  is a clean 1:1 rename the heuristic catches confidently; `HL.Window`'s
+  `over_fullscreen` → `allowed_over_fullscreen`
+  ([hyprwm/Hyprland#15367](https://github.com/hyprwm/Hyprland/pull/15367))
+  is genuinely ambiguous by type alone (two new booleans were added, not
+  one) and is deliberately left as a plain removal rather than guessed at.
+
+  Every diff is phrased as "the schema changed," never "this will break":
+  the generated stub has itself lagged Hyprland's real behavior more than
+  once in this project's own research (the `allow`/`mode` field was wrong
+  from the version it first shipped in), so a schema diff is evidence of a
+  possible behavior change, not proof of one.
+
 ## [0.3.0] — 2026-08-28
 
 ### Added
