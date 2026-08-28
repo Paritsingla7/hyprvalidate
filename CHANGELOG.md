@@ -6,6 +6,33 @@ Notable changes. Format loosely follows [Keep a Changelog](https://keepachangelo
 
 ### Added
 
+- **`check --fix`** applies the corrections that have exactly one right
+  answer — wrapping a bare-identifier string value in quotes
+  (`possible_missing_quotes`), adding `()` to a referenced-but-uncalled
+  dispatcher factory (`uncalled_dispatcher`) — directly to the file, then
+  re-checks. Applied as targeted character-offset patches against the
+  original source (new `hyprvalidate/fixer.py`), never a full
+  AST-regenerate-and-reprint, so everything outside the flagged span —
+  comments, formatting, unrelated code — survives untouched; a user's
+  hand-written config isn't `convert`'s freshly-generated output. Findings
+  with no single correct fix (unknown symbols/keys, type/arity mismatches,
+  duplicate binds) are still reported, never guessed at. Before writing,
+  the patched source is run through the luac gate and re-checked — same
+  discipline `convert` already applies to its own output — so a fix that
+  would produce invalid Lua, or reveal a fresh problem (e.g. a dispatcher
+  that turns out to need arguments once actually called), is surfaced
+  instead of silently written over.
+
+- **A ready-to-copy GitHub Actions workflow** for validating a dotfiles
+  repo's Lua config in CI, with no Hyprland installation needed:
+  [`examples/ci/validate-hyprland-lua.yml`](examples/ci/validate-hyprland-lua.yml).
+  Pins the installed `hyprvalidate` version and its `schema.json` snapshot
+  to the same git tag, so the tool and the schema it validates against are
+  always in sync. Also fixes the README's own CI section, which had gone
+  stale: it referenced `pipx install git+https://...` from before the PyPI
+  release, and ran `hyprvalidate check ... --stub schema.json` without ever
+  saying where that file comes from.
+
 - **`check` now catches unquoted-string config values that would silently
   evaluate to `nil`** — e.g. `accel_profile = flat` instead of
   `accel_profile = "flat"`. This is the exact real-world bug in

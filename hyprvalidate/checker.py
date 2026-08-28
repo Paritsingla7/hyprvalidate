@@ -135,10 +135,23 @@ class FindingKind(str, Enum):
 
 
 @dataclass
+class FixEdit:
+    """A single, unambiguous textual correction for a Finding: replace
+    `source[start:end]` (character offsets, `end` exclusive) with
+    `replacement`. Only attached to findings this module can correct with
+    zero ambiguity about intent (see `fixer.py`) - most finding kinds never
+    get one, and their `Finding.fix` stays None."""
+    start: int
+    end: int
+    replacement: str
+
+
+@dataclass
 class Finding:
     kind: FindingKind
     line: int | None
     message: str
+    fix: FixEdit | None = None
 
 
 # Type-expression tokens that indicate "this alternative is a table/class
@@ -345,11 +358,22 @@ def _missing_quotes_finding(
         return None
     if value.id in defined_names:
         return None
+    fix = None
+    if value.first_token is not None:
+        # A bare Name is always a single token and always a valid Lua
+        # identifier (that's what let it parse as a Name at all) - no
+        # escaping needed to wrap it in quotes.
+        fix = FixEdit(
+            start=value.first_token.start,
+            end=value.first_token.stop + 1,
+            replacement=f'"{value.id}"',
+        )
     return Finding(
         FindingKind.POSSIBLE_MISSING_QUOTES, line,
         f"'{key_or_field_name}' is set to the bare identifier '{value.id}', "
         f"which isn't defined anywhere in this file and would evaluate to "
         f"nil - did you mean the string \"{value.id}\"?",
+        fix=fix,
     )
 
 
@@ -566,11 +590,24 @@ def check(schema: Schema, tree) -> list[Finding]:
                         continue
                     arg_valid, _reason, arg_sig = resolve_symbol(schema, arg_dotted)
                     if arg_valid and arg_sig is not None:
+                        fix = None
+                        arg_node = node.args[idx]
+                        if arg_node.last_token is not None:
+                            # Insert (not replace) right after the reference's
+                            # last token - `()` is the minimal correction that
+                            # makes this a call at all. If the dispatcher also
+                            # needs arguments, the re-check after applying
+                            # fixes will surface that as a fresh
+                            # ARITY_MISMATCH - a different, honest problem,
+                            # not something to guess at here.
+                            insert_at = arg_node.last_token.stop + 1
+                            fix = FixEdit(start=insert_at, end=insert_at, replacement="()")
                         findings.append(Finding(
                             FindingKind.UNCALLED_DISPATCHER, line,
                             f"{dotted}: argument {idx + 1} ('{arg_dotted}') is a "
                             f"dispatcher factory reference, not a call - did you "
                             f"mean '{arg_dotted}(...)'?",
+                            fix=fix,
                         ))
             if sig is not None and not sig.has_vararg:
                 n_args = len(node.args)

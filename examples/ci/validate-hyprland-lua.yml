@@ -1,0 +1,51 @@
+# Validate a Hyprland Lua config in CI, without installing Hyprland itself.
+#
+# Copy this file into your dotfiles repo as .github/workflows/validate-hyprland-lua.yml
+# and adjust CONFIG_PATH below to point at your config. That's the whole setup.
+#
+# The hyprvalidate version and the schema.json snapshot are pinned to the
+# same git tag on purpose - they're extracted from the same Hyprland stub,
+# so validating against a schema.json from a different version than the
+# installed tool would silently check your config against dispatchers/config
+# keys that may not match what that tool version actually understands.
+# Bump HYPRVALIDATE_VERSION when you want a newer schema; the two always
+# move together.
+
+name: Validate Hyprland Lua config
+
+on:
+  push:
+    paths:
+      - "**/*.lua"
+  pull_request:
+    paths:
+      - "**/*.lua"
+
+env:
+  HYPRVALIDATE_VERSION: "0.2.0"
+  # Path to your config - a single .lua file or a directory (e.g. from
+  # `hyprvalidate convert --split`). Every *.lua file in a directory is
+  # checked.
+  CONFIG_PATH: "hypr"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install hyprvalidate
+        run: pipx install "hyprvalidate==${HYPRVALIDATE_VERSION}"
+
+      - name: Fetch schema snapshot for this hyprvalidate version
+        run: >
+          curl -fsSL
+          "https://raw.githubusercontent.com/Paritsingla7/hyprvalidate/v${HYPRVALIDATE_VERSION}/schema.json"
+          -o schema.json
+
+      - name: Check config against Hyprland's real API
+        run: hyprvalidate check "${CONFIG_PATH}" --stub schema.json
