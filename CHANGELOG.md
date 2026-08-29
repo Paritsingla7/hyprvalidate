@@ -33,6 +33,35 @@ Notable changes. Format loosely follows [Keep a Changelog](https://keepachangelo
   from the version it first shipped in), so a schema diff is evidence of a
   possible behavior change, not proof of one.
 
+### Fixed
+
+- **`check` false-positived on every real layer rule with a `match` table**
+  — `HL.LayerRuleSpec.match` is typed `table<string, string|boolean>`
+  (LuaLS's generic map syntax), which `_has_table_alternative` didn't
+  recognize as table-shaped at all (it only checked for `{` or `HL.` in the
+  type expression), so a perfectly valid `match = { namespace = "..." }`
+  was flagged as a type mismatch. Found by running `check` against two
+  independent real-world Hyprland Lua configs — Garuda Linux's
+  distribution-shipped settings
+  ([`garuda-hyprland-settings`](https://gitlab.com/garuda-linux/themes-and-settings/settings/garuda-hyprland-settings))
+  and the [sea-shell](https://github.com/MiyukiVigil/sea-shell) project —
+  both of which hit this identically, since it's the only way to write a
+  layer rule at all.
+
+  The same run surfaced a second, *upstream* gap, not a hyprvalidate bug:
+  both configs also use `hl.bind(..., { mouse = true })`, and `mouse` isn't
+  in `HL.BindOptions` at all. Traced directly into Hyprland's own source —
+  `mouse` is a real, implemented flag
+  ([`LuaKeybind.cpp`](https://github.com/hyprwm/Hyprland/blob/main/src/config/lua/objects/LuaKeybind.cpp),
+  parsed identically to `click`/`drag`, which *are* in the schema) that's
+  simply missing, along with `auto_consuming`, `device_inclusive`, and
+  `devices`, from a hand-written field list in Hyprland's own
+  `meta/generateLuaStubs.py` (lines ~658–677) — the exact "hand-maintained
+  table drifts from what's real" bug class this project exists to catch,
+  found one level further upstream than usual. Not something hyprvalidate
+  can fix on its own without hand-maintaining the same kind of table it
+  refuses to elsewhere; a candidate for an upstream report.
+
 ## [0.3.0] — 2026-08-28
 
 ### Added

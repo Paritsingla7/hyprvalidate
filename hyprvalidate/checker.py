@@ -156,9 +156,16 @@ class Finding:
 
 # Type-expression tokens that indicate "this alternative is a table/class
 # shape, not a scalar" - used to decide whether to skip a mismatch rather
-# than to model the shape.
+# than to model the shape. Found missing "table" (bare, e.g. `integer|table`,
+# and LuaLS's generic form `table<string, string|boolean>`) by testing
+# against two real, independent Hyprland Lua configs (Garuda Linux's
+# distribution settings and the sea-shell project) - both use
+# `hl.layer_rule({ match = { namespace = "..." } })`, which is exactly
+# HL.LayerRuleSpec.match's real type, `table<string, string|boolean>`; this
+# helper didn't recognize that as table-shaped at all, so every layer rule
+# with a match table in the wild was a false positive here.
 def _has_table_alternative(type_expr: str) -> bool:
-    return "{" in type_expr or "HL." in type_expr
+    return "{" in type_expr or "HL." in type_expr or "table" in type_expr
 
 
 _SCALAR_COMPAT = {
