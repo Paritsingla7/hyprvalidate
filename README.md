@@ -178,7 +178,7 @@ two jobs, split by trigger:
 
 ```yaml
 - run: pipx install hyprvalidate
-- run: curl -fsSLo schema.json https://raw.githubusercontent.com/Paritsingla7/hyprvalidate/v0.3.0/schema.json
+- run: curl -fsSLo schema.json https://raw.githubusercontent.com/Paritsingla7/hyprvalidate/v0.4.0/schema.json
 - run: hyprvalidate check hypr/ --stub schema.json
 ```
 
