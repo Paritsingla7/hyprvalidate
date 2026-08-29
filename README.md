@@ -182,6 +182,31 @@ two jobs, split by trigger:
 - run: hyprvalidate check hypr/ --stub schema.json
 ```
 
+### Checking whether an upcoming Hyprland update will affect you
+
+`check` validates against one schema — "is my config valid right now."
+`diff-impact` answers a different question: "of everything that changed
+between two Hyprland versions, which parts does *my* config actually use?"
+Hyprland's Lua config API is still young and has already shipped silent
+breaking renames (e.g. `hl.permission{}`'s `allow` field became `mode` one
+day after Lua config first shipped) — `diff-impact` cross-references a
+config against a real schema diff instead of waiting to find out the hard
+way:
+
+```console
+$ hyprvalidate diff-impact hyprland.lua --from schemas/v0.55.0.json --to schemas/v0.55.1.json
+hyprland.lua: [possible_rename] 'allow' on HL.PermissionSpec no longer exists - possibly renamed to 'mode' (heuristic guess, not confirmed)
+
+1 change(s) in the target schema affect these file(s) - not confirmed breakage, just what's worth checking before updating.
+```
+
+`schemas/` in this repo has one real schema per tagged Hyprland release
+(v0.55.0 onward) to diff between. Every line is phrased as "this changed in
+the schema," never "this will break" — the generated stub has itself lagged
+real Hyprland behavior before, so a diff is evidence worth checking, not
+proof of breakage. Exits `0` even when it finds something, since this isn't
+a confirmed problem — pass `--fail-on-impact` to gate a build on it instead.
+
 ## Why this exists
 
 Four community converters already existed when this started. Testing all four

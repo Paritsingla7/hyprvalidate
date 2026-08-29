@@ -26,6 +26,8 @@ from hyprvalidate.luaast.luac_gate import LuacNotFound
 from hyprvalidate.hyprlang import parser as hyprlang_parser
 from hyprvalidate.converter import mapper
 from hyprvalidate.schema.extractor import load_schema
+from hyprvalidate.schema.diff import diff_schemas
+from hyprvalidate.schema.impact import find_used_symbols, compute_impact
 from hyprvalidate import checker, fixer
 
 DEFAULT_STUB_PATH = "/usr/share/hypr/stubs/hl.meta.lua"
@@ -128,6 +130,71 @@ def check_files(paths: list[Path], stub_path: str, fix: bool = False) -> tuple[i
         return 1, lines
 
     lines.append(f"{len(paths)} file(s) checked, no issues found.")
+    return 0, lines
+
+
+def diff_impact_files(
+    paths: list[Path], from_stub: str, to_stub: str, fail_on_impact: bool = False,
+) -> tuple[int, list[str]]:
+    """Cross-reference what changed between two schemas (`from_stub` ->
+    `to_stub`) against what each file actually uses. Informational by
+    default (exit 0) even when it finds something - `fail_on_impact` opts
+    into treating a non-empty report as a failure, for a CI job that wants
+    this to gate rather than just warn. Every line is phrased as "this
+    changed in the schema", never "this will break" - see
+    hyprvalidate.schema.diff's module docstring for why that distinction
+    is deliberate, not just careful wording."""
+    lines: list[str] = []
+
+    for label, stub_path in (("--from", from_stub), ("--to", to_stub)):
+        if not Path(stub_path).is_file():
+            return 2, [f"error: {label} schema not found at {stub_path}"]
+
+    paths, path_errors = _expand_paths(paths)
+    if path_errors:
+        return 2, path_errors
+
+    old_schema = load_schema(from_stub)
+    new_schema = load_schema(to_stub)
+    diff = diff_schemas(old_schema, new_schema)
+
+    syntax_failed = False
+    total_hits = 0
+
+    for path in paths:
+        luac_result = luac_gate.check_file(path)
+        if not luac_result.ok:
+            syntax_failed = True
+            lines.append(f"{luac_result.message}")
+            continue
+
+        tree = reader.parse_file(path)
+        used = find_used_symbols(old_schema, tree)
+        report = compute_impact(old_schema, diff, used)
+
+        hits = report.affected_config_keys + report.affected_class_fields
+        total_hits += len(hits) + len(report.affected_classes)
+        for hit in hits:
+            lines.append(f"{path}: [{hit.kind}] {hit.detail}")
+        for ac in report.affected_classes:
+            via = ", ".join(sorted(ac.used_via))
+            lines.append(
+                f"{path}: [class_removed] {ac.class_name} no longer exists in "
+                f"the target schema, used via: {via}"
+            )
+
+    if syntax_failed:
+        return 2, lines
+
+    if total_hits:
+        lines.append(
+            f"\n{total_hits} change(s) in the target schema affect these "
+            f"file(s) - not confirmed breakage, just what's worth checking "
+            f"before updating."
+        )
+        return (1 if fail_on_impact else 0), lines
+
+    lines.append(f"{len(paths)} file(s) checked - nothing they use changed between these schemas.")
     return 0, lines
 
 
@@ -277,6 +344,31 @@ def main(argv: list[str] | None = None) -> int:
              "hyprland.lua entry point that require()s them",
     )
 
+    diff_parser = subparsers.add_parser(
+        "diff-impact",
+        help=(
+            "check which changes between two Hyprland schema versions "
+            "affect what a config actually uses"
+        ),
+    )
+    diff_parser.add_argument("files", nargs="+", type=Path, help=".lua file(s) to check")
+    diff_parser.add_argument(
+        "--from", dest="from_stub", required=True, metavar="SCHEMA",
+        help="schema.json (or hl.meta.lua stub) the config is written against today",
+    )
+    diff_parser.add_argument(
+        "--to", dest="to_stub", required=True, metavar="SCHEMA",
+        help="schema.json (or hl.meta.lua stub) to check for upcoming changes",
+    )
+    diff_parser.add_argument(
+        "--fail-on-impact", action="store_true",
+        help=(
+            "exit 1 if anything relevant changed (default: exit 0 - this "
+            "reports what changed, it doesn't confirm your config will "
+            "actually break, so it doesn't gate a build unless you ask it to)"
+        ),
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "check":
@@ -293,6 +385,18 @@ def main(argv: list[str] | None = None) -> int:
         try:
             exit_code, lines = convert_file(
                 args.file, args.stub, args.output, args.split
+            )
+        except LuacNotFound as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        for line in lines:
+            print(line)
+        return exit_code
+
+    if args.command == "diff-impact":
+        try:
+            exit_code, lines = diff_impact_files(
+                args.files, args.from_stub, args.to_stub, args.fail_on_impact
             )
         except LuacNotFound as exc:
             print(f"error: {exc}", file=sys.stderr)

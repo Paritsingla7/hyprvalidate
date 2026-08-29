@@ -18,7 +18,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 _LIVE_STUB = Path("/usr/share/hypr/stubs/hl.meta.lua")
 SCHEMA_PATH = str(_LIVE_STUB if _LIVE_STUB.is_file() else Path(__file__).parent.parent / "schema.json")
 
-from hyprvalidate.cli import check_files, convert_file
+from hyprvalidate.cli import check_files, convert_file, diff_impact_files
 
 REPO_ROOT = Path(__file__).parent.parent
 REAL_KEYBINDS = FIXTURES / "hyprland-lua" / "keybinds.lua"
@@ -329,3 +329,48 @@ def test_missing_luac_gives_a_clean_error_not_a_traceback(tmp_path, monkeypatch)
     lua_file = tmp_path / "x.lua"
     lua_file.write_text(VALID_SNIPPET)
     assert cli.main(["check", str(lua_file), "--stub", SCHEMA_PATH]) == 2
+
+
+SCHEMAS_DIR = REPO_ROOT / "schemas"
+PERMISSION_SNIPPET = 'hl.permission({ allow = "yes", binary = "steam", type = "screencopy" })\n'
+
+
+def test_diff_impact_reports_a_real_regression_and_exits_zero_by_default(tmp_path):
+    """The real allow -> mode regression (hyprwm/Hyprland#14400) -
+    informational by default: exit 0 even though it found something, since
+    this reports what changed, not confirmed breakage."""
+    f = tmp_path / "perm.lua"
+    f.write_text(PERMISSION_SNIPPET)
+    code, lines = diff_impact_files(
+        [f], str(SCHEMAS_DIR / "v0.55.0.json"), str(SCHEMAS_DIR / "v0.55.1.json")
+    )
+    assert code == 0
+    assert any("possible_rename" in line and "mode" in line for line in lines)
+
+
+def test_diff_impact_fail_on_impact_exits_one(tmp_path):
+    f = tmp_path / "perm.lua"
+    f.write_text(PERMISSION_SNIPPET)
+    code, lines = diff_impact_files(
+        [f], str(SCHEMAS_DIR / "v0.55.0.json"), str(SCHEMAS_DIR / "v0.55.1.json"),
+        fail_on_impact=True,
+    )
+    assert code == 1
+
+
+def test_diff_impact_unrelated_config_reports_nothing(tmp_path):
+    f = tmp_path / "ok.lua"
+    f.write_text(VALID_SNIPPET)
+    code, lines = diff_impact_files(
+        [f], str(SCHEMAS_DIR / "v0.55.0.json"), str(SCHEMAS_DIR / "v0.55.1.json")
+    )
+    assert code == 0
+    assert "nothing they use changed" in lines[-1]
+
+
+def test_diff_impact_missing_schema_exits_two(tmp_path):
+    f = tmp_path / "ok.lua"
+    f.write_text(VALID_SNIPPET)
+    code, lines = diff_impact_files([f], "/nonexistent/a.json", str(SCHEMAS_DIR / "v0.55.1.json"))
+    assert code == 2
+    assert "--from" in lines[0]
