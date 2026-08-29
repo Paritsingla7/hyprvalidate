@@ -4,6 +4,8 @@ Notable changes. Format loosely follows [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-08-29
+
 ### Added
 
 - **`hyprvalidate diff-impact`** — Phase 2/3 of schema-diff, building on the
