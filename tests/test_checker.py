@@ -98,6 +98,37 @@ def test_gradient_table_value_accepted_without_deep_structural_check():
     assert findings == []
 
 
+def test_generic_table_type_spec_field_accepts_a_table_value():
+    """HL.LayerRuleSpec.match is typed `table<string, string|boolean>` -
+    LuaLS's generic map syntax, not `string|HL.Gradient` (a class
+    alternative) or a `{...}` literal shape. `_has_table_alternative`
+    didn't recognize "table<...>" at all, so this was a false positive on
+    every real layer rule with a match table - found by running
+    hyprvalidate against two independent real-world Hyprland Lua configs
+    (Garuda Linux's distribution settings and the sea-shell project), both
+    of which use exactly this pattern and both of which hit it."""
+    schema = _schema()
+    findings = checker.check_source(
+        schema,
+        'hl.layer_rule({ name = "blur-all-layers", match = { namespace = ".*" } })',
+    )
+    assert findings == []
+
+
+def test_has_table_alternative_recognizes_every_real_table_shaped_form():
+    """The schema uses three distinct textual shapes for "this alternative
+    is a table, not a scalar": a class reference (`HL.Gradient`), a
+    `{...}` literal shape, and LuaLS's generic `table<...>` / bare `table`
+    form - the last of which was missing before this fix. A genuinely
+    scalar-only type must still correctly return False, or every
+    type-mismatch check in this module goes blind."""
+    assert checker._has_table_alternative("string|HL.Gradient")
+    assert checker._has_table_alternative("integer|table")
+    assert checker._has_table_alternative("table<string, string|boolean>")
+    assert not checker._has_table_alternative("boolean")
+    assert not checker._has_table_alternative("string")
+
+
 def test_non_literal_config_value_is_accepted_uncritically():
     """A variable reference can't be statically type-checked - accepted,
     not flagged, per the documented scope limitation."""
