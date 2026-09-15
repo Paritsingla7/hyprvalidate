@@ -16,7 +16,7 @@
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg">
   <img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-blue.svg">
   <img alt="Hyprland 0.55+" src="https://img.shields.io/badge/hyprland-0.55%2B-1a9fb2.svg">
-  <img alt="tests" src="https://img.shields.io/badge/tests-170%20passing-brightgreen.svg">
+  <img alt="tests" src="https://img.shields.io/badge/tests-219%20passing-brightgreen.svg">
 </p>
 
 ---
